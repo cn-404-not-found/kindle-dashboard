@@ -1,0 +1,14 @@
+# WorkBuddy 本地项目数据（不应入库）
+.workbuddy/
+
+# 字体二进制（微软版权字体，且体积大，运行环境单独放置）
+*.ttf
+*.ttc
+*.otf
+
+# 编译产物
+/kindle-dashboard
+*.exe
+*.dll
+*.so
+*.dylib
