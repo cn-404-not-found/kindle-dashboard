@@ -15,8 +15,8 @@
 - **关键文件职责**：
   - `main.go` —— 程序入口；负责启动 HTTP 服务（`/api/display` 返回 JSON、`/screen.png` 返回渲染图）、组装数据源（天气 / 农历目前为 Mock，待接真实 API）。
   - `render.go` —— 全部渲染逻辑；使用 gg 绘制仪表盘、加载字体、排版文本。
-  - `sarasa.ttc` —— 默认字体文件（更纱黑体，单文件即可运行），需放在可执行文件同目录；`sarasa-bold.ttc` 为**可选**，存在时启用真实粗体，缺失则回退偏移叠绘模拟粗体。字体文件被 `.gitignore` 排除，不入库。
-- **字体加载链路（正确写法）**：`sfnt.ParseCollection` → `col.Font(0)` → `opentype.NewFace(font, &opentype.FaceOptions{Size, DPI, Hinting})`。子字体选择需优先匹配简体（SC）变体，找不到时回退合集首个字形。
+  - `Sarasa-Regular.ttc` —— 默认字体文件（更纱黑体，单文件即可运行），需放在可执行文件同目录；`Sarasa-Bold.ttc` 为**可选**，存在时启用真实粗体，缺失则回退偏移叠绘模拟粗体。字体文件被 `.gitignore` 排除，不入库。**保留更纱官方 TTC 原文件名，不要改名。**
+- **字体加载链路（正确写法）**：`sfnt.ParseCollection` → `col.Font(0)` → `opentype.NewFace(font, &opentype.FaceOptions{Size, DPI, Hinting})`。子字体选择需优先匹配简体（SC）变体，找不到时回退合集首个字形。`loadSCFont()` 负责选取 `Sarasa Mono SC` / `Sarasa Mono SC Bold` 子变体。
 
 ---
 
