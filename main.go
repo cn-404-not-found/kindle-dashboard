@@ -8,9 +8,12 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/6tail/lunar-go/calendar"
 )
 
 // ----------------------------------------------------------------------------
@@ -40,6 +43,7 @@ type DashboardData struct {
 	TimeStr  string `json:"time_str"`  // 当前时间，如 "10:43"
 	DateStr  string `json:"date_str"`  // 当前日期，如 "2026年08月03日"
 	LunarStr string `json:"lunar_str"` // 农历/节气，如 "六月廿一"
+	Location string `json:"location"`  // 城市名，如 "南宁"（图上展示用）
 
 	// 实时天气
 	Temp        float64 `json:"temp"`         // 实时温度（℃）
@@ -50,7 +54,7 @@ type DashboardData struct {
 	// 5 日预报
 	Forecast []ForecastItem `json:"forecast"`
 
-	// 月历网格：7 列（周日→周六）× 6 行
+	// 月历网格：7 列（周日→周六）× 6 行（42 天；末格周日由渲染层推算）
 	Calendar [6][7]CalendarCell `json:"calendar"`
 }
 
@@ -68,53 +72,202 @@ type displayResponse struct {
 // weekdayNames 中文星期名称，索引与 time.Weekday 对齐（0=周日）。
 var weekdayNames = []string{"周日", "周一", "周二", "周三", "周四", "周五", "周六"}
 
-// fetchDashboardData 实时获取系统时间并组装看板数据。
-// 天气与月历的“业务值”目前为结构严密、逻辑合理的 Mock 数据，
-// 已在各处标注 TODO，方便后续替换为真实 API。
+// ---- 位置配置（Kindle 一般固定放置，按需修改）----
+const (
+	cityName = "南宁"   // 图上展示的城市名
+	cityLat  = 22.82    // 南宁纬度（Open-Meteo 用）
+	cityLon  = 108.37   // 南宁经度
+)
+
+// wmoToText 将 WMO weather_code 映射为中文天气现象。
+// 参考：https://open-meteo.com/en/docs 的 weather_code 说明。
+func wmoToText(code int) string {
+	switch code {
+	case 0:
+		return "晴"
+	case 1:
+		return "晴间多云"
+	case 2:
+		return "多云"
+	case 3:
+		return "阴"
+	case 45, 48:
+		return "雾"
+	case 51, 53, 55:
+		return "毛毛雨"
+	case 56, 57:
+		return "冻雨"
+	case 61:
+		return "小雨"
+	case 63:
+		return "中雨"
+	case 65:
+		return "大雨"
+	case 66, 67:
+		return "冻雨"
+	case 71, 73, 75:
+		return "雪"
+	case 77:
+		return "雪粒"
+	case 80, 81, 82:
+		return "阵雨"
+	case 85, 86:
+		return "阵雪"
+	case 95:
+		return "雷阵雨"
+	case 96, 99:
+		return "雷阵雨伴冰雹"
+	default:
+		return "未知"
+	}
+}
+
+// weatherResult 聚合一次天气拉取的结果。
+type weatherResult struct {
+	temp        float64
+	weatherText string
+	highTemp    float64
+	lowTemp     float64
+	forecast    []ForecastItem
+}
+
+// fetchWeather 从 Open-Meteo（免 key、免费）拉取实时天气与 7 日预报。
+// 成功返回 (结果, true)；网络/解析失败时返回 (空, false)，调用方回退到 Mock。
+func fetchWeather() (weatherResult, bool) {
+	url := fmt.Sprintf(
+		"https://api.open-meteo.com/v1/forecast?latitude=%.2f&longitude=%.2f"+
+			"&current=temperature_2m,weather_code"+
+			"&daily=weather_code,temperature_2m_max,temperature_2m_min"+
+			"&timezone=Asia%%2FShanghai&forecast_days=7",
+		cityLat, cityLon,
+	)
+	resp, err := http.Get(url)
+	if err != nil {
+		log.Printf("天气获取失败（网络）: %v", err)
+		return weatherResult{}, false
+	}
+	defer resp.Body.Close()
+
+	var w struct {
+		Current struct {
+			Temperature2m float64 `json:"temperature_2m"`
+			WeatherCode   int     `json:"weather_code"`
+		} `json:"current"`
+		Daily struct {
+			Time             []string  `json:"time"`
+			WeatherCode      []int     `json:"weather_code"`
+			Temperature2mMax []float64 `json:"temperature_2m_max"`
+			Temperature2mMin []float64 `json:"temperature_2m_min"`
+		} `json:"daily"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&w); err != nil {
+		log.Printf("天气解析失败: %v", err)
+		return weatherResult{}, false
+	}
+
+	res := weatherResult{
+		temp:        w.Current.Temperature2m,
+		weatherText: wmoToText(w.Current.WeatherCode),
+	}
+	if len(w.Daily.Temperature2mMax) > 0 {
+		res.highTemp = w.Daily.Temperature2mMax[0]
+	}
+	if len(w.Daily.Temperature2mMin) > 0 {
+		res.lowTemp = w.Daily.Temperature2mMin[0]
+	}
+	for i := 0; i < len(w.Daily.Time) && i < 5; i++ {
+		res.forecast = append(res.forecast, ForecastItem{
+			WeatherText: wmoToText(w.Daily.WeatherCode[i]),
+			HighTemp:    int(w.Daily.Temperature2mMax[i] + 0.5),
+			LowTemp:     int(w.Daily.Temperature2mMin[i] + 0.5),
+			IsToday:     i == 0,
+		})
+	}
+	return res, true
+}
+
+// mockWeather 天气拉取失败时的兜底数据，保证看板始终可渲染。
+func mockWeather() weatherResult {
+	return weatherResult{
+		temp:        26.5,
+		weatherText: "多云",
+		highTemp:    31,
+		lowTemp:     23,
+		forecast: []ForecastItem{
+			{WeatherText: "多云", HighTemp: 31, LowTemp: 23, IsToday: true},
+			{WeatherText: "晴", HighTemp: 33, LowTemp: 24},
+			{WeatherText: "小雨", HighTemp: 29, LowTemp: 22},
+			{WeatherText: "阴", HighTemp: 30, LowTemp: 21},
+			{WeatherText: "雷阵雨", HighTemp: 28, LowTemp: 20},
+		},
+	}
+}
+
+// fetchDashboardData 实时获取系统时间、真实天气与农历，并组装看板数据。
 func fetchDashboardData() DashboardData {
 	now := time.Now()
 
 	// 时间/日期字符串通过 time.Now() 实时获取。
 	timeStr := now.Format("15:04")
-	dateStr := now.Format("2006年01月02日")
+	dateStr := now.Format("2006年1月2日") // 不补零，便于顶部拆成「年/月日/农历」三行
+
+	// 天气：优先真实拉取，失败回退 Mock。
+	w, ok := fetchWeather()
+	if !ok {
+		w = mockWeather()
+	}
 
 	return DashboardData{
 		// --- 时间相关 ---
 		TimeStr:  timeStr,
 		DateStr:  dateStr,
-		LunarStr: "六月廿一", // TODO: 替换为真实农历/节气 API（如基于 now 计算）
+		LunarStr: lunarMonthDay(now.Year(), int(now.Month()), now.Day()), // 真实农历（月+日）
+		Location: cityName,
 
-		// --- 实时天气（Mock，待接入真实 API）---
-		Temp:        26.5, // TODO: 替换为真实实时温度
-		WeatherText: "多云", // TODO: 替换为真实天气现象
-		HighTemp:    31,   // TODO: 替换为真实今日最高温
-		LowTemp:     23,   // TODO: 替换为真实今日最低温
+		// --- 实时天气（Open-Meteo 真实数据，失败回退 Mock）---
+		Temp:        w.temp,
+		WeatherText: w.weatherText,
+		HighTemp:    w.highTemp,
+		LowTemp:     w.lowTemp,
 
 		// --- 5 日预报与月历网格 ---
-		Forecast: buildForecast(now),
+		Forecast: buildForecast(now, w),
 		Calendar: buildMonthGrid(now),
 	}
 }
 
-// buildForecast 基于今天生成未来 5 日的预报（日期/星期真实，天气为 Mock）。
-func buildForecast(now time.Time) []ForecastItem {
-	// TODO: 替换为真实 5 日预报 API；下方 mock 数组仅为占位。
-	mockTexts := []string{"多云", "晴", "小雨", "阴", "雷阵雨"}
-	mockHigh := []int{31, 33, 29, 30, 28}
-	mockLow := []int{23, 24, 22, 21, 20}
-
-	items := make([]ForecastItem, 5)
-	for i := 0; i < 5; i++ {
+// buildForecast 基于今天生成未来 5 日的预报：星期/日期由 now 推导（真实），
+// 天气现象与最高/最低温取自真实拉取的 w.forecast（失败时为 Mock 兜底）。
+func buildForecast(now time.Time, w weatherResult) []ForecastItem {
+	n := len(w.forecast)
+	if n > 5 {
+		n = 5
+	}
+	items := make([]ForecastItem, n)
+	for i := 0; i < n; i++ {
 		d := now.AddDate(0, 0, i)
 		items[i] = ForecastItem{
 			Weekday:     weekdayNames[int(d.Weekday())],
-			WeatherText: mockTexts[i],
-			HighTemp:    mockHigh[i],
-			LowTemp:     mockLow[i],
+			WeatherText: w.forecast[i].WeatherText,
+			HighTemp:    w.forecast[i].HighTemp,
+			LowTemp:     w.forecast[i].LowTemp,
 			IsToday:     i == 0,
 		}
 	}
 	return items
+}
+
+// lunarDay 返回指定公历日期对应的农历「日」（如 "廿一"）。
+// 用于月历网格中每个单元格下方的农历小字。
+func lunarDay(year, month, day int) string {
+	return calendar.NewSolarFromYmd(year, month, day).GetLunar().GetDayInChinese()
+}
+
+// lunarMonthDay 返回指定公历日期对应的农历「月+日」（如 "六月廿一"）。
+// 用于顶部日期行旁的农历/节气提示。
+func lunarMonthDay(year, month, day int) string {
+	l := calendar.NewSolarFromYmd(year, month, day).GetLunar()
+	return l.GetMonthInChinese() + "月" + l.GetDayInChinese()
 }
 
 // buildMonthGrid 构建当前月份的 7×6 月历网格。
@@ -135,7 +288,7 @@ func buildMonthGrid(now time.Time) [6][7]CalendarCell {
 		for col := 0; col < 7; col++ {
 			cell := CalendarCell{
 				Day:            cursor.Day(),
-				Lunar:          "", // TODO: 替换为真实农历日期
+				Lunar:          lunarDay(cursor.Year(), int(cursor.Month()), cursor.Day()), // 真实农历日期
 				IsCurrentMonth: cursor.Month() == month,
 				IsToday: cursor.Year() == now.Year() &&
 					cursor.Month() == now.Month() &&

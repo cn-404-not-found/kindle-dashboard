@@ -1,136 +1,149 @@
 # Continuation: Kindle-dashboard（墨水屏看板）
 
 **Date:** 2026-08-03
-**Working directory:** /Users/liangyong/Documents/开发项目/Kindle-dashboard
+**Working directory:** /Users/liangyong/Documents/Git开发项目/Kindle-dashboard
 
 ---
 
 ## What This Project Is
 
-一个面向 Kindle Paperwhite 3（1072×1448 墨水屏）的看板后端服务。它用 Go 起一个 HTTP 服务，每次请求实时组装数据（时间/日期/农历、今日天气、5 日预报、整月日历），调用 `gg` 库在内存里绘制成 PNG，再由墨水屏设备轮询拉取展示。目标部署平台是 Linux x86_64（Alpine LXC）。当前数据除时间/日期/星期外均为结构严密的 Mock，已在各处标注 `TODO` 待接真实 API。
+一个面向 Kindle Paperwhite 3（1072×1448 墨水屏）的看板后端服务。用 Go 起 HTTP 服务（监听 `:8080`），每次请求实时组装数据（时间/日期/农历、实时天气、5 日预报、整月日历），调用 `gg` 库在内存绘制成 PNG，墨水屏设备每 60s 轮询拉取 `/screen.png` 展示。目标部署平台是 Kindle 侧 Linux x86_64（Alpine LXC）。
+
+**当前数据已全部接入真实源**（不再有 Mock 占位）：天气来自 Open-Meteo 免 key 接口，农历来自 `lunar-go` 库。Mock 仅作为网络失败时的兜底。
 
 ## Tech Stack
 
-- **语言：** Go（标准库 `net/http`、`image/png`、`time`、`encoding/json`）
-- **绘图：** `github.com/fogleman/gg`（2D 画布）
-- **字体解析：** `golang.org/x/image/font/truetype`（用于解析 TTC 合集字体）
-- **字体文件：** `msyh.ttc`（微软雅黑，运行时需放在可执行文件同目录）
-- 无 Web 框架、无数据库，纯 HTTP 服务。
+- **语言：** Go（本机 1.26.5；标准库 `net/http`、`image/png`、`time`、`encoding/json`）
+- **绘图：** `github.com/fogleman/gg v1.3.0`（2D 画布）
+- **字体解析：** `golang.org/x/image v0.44.0` 的 `font/sfnt`（`ParseCollection` + `col.Font(i)`）+ `font/opentype`（`NewFace`）。**注意 x/image 不锁版本，放开到 latest**（用户明确反对版本 pinned）。
+- **字体文件（默认 1 个）：** `Sarasa-Regular.ttc`（更纱黑体 Sarasa Gothic 官方 TTC 缩写包内原名，开源 OFL，无需改名；放可执行文件同目录，内部自动选简体等宽子变体 `Sarasa Mono SC`）。粗体默认偏移叠绘模拟；同目录另有 `Sarasa-Bold.ttc` 则升级为真实 Bold 字重。
+- **农历：** `github.com/6tail/lunar-go/calendar v1.4.6`（顶部月+日、月历每格日，均为实时计算）。
+- **天气：** Open-Meteo（免 key、免 token）。
+- 无 Web 框架、无数据库，纯 HTTP。
 
 ## How to Build & Run
 
-> ⚠️ 本机（macOS）尚未安装 Go 工具链（上次装被中断），所以本地无法 `go build`。需在装有 go 的环境执行：
-
 ```bash
-# 1. 安装依赖（首次）
+# 1. 依赖（首次 / go.mod 变动后）
 go mod tidy
 
-# 2. 编译
+# 2. 编译（macOS 本机）
 go build -o kindle-dashboard .
 
-# 3. 把字体放到可执行文件同目录
-cp /path/to/msyh.ttc ./msyh.ttc
+# 3. 放字体（粗体可选）
+cp /path/to/Sarasa-Regular.ttc ./Sarasa-Regular.ttc
+#   cp /path/to/Sarasa-Bold.ttc  ./Sarasa-Bold.ttc   # 可选真粗体
 
-# 4. 运行（监听 :8080）
+# 4. 运行（监听 :8080，被动渲染——每次请求实时取数+绘制）
 ./kindle-dashboard
 
-# 5. 验证渲染
-open http://localhost:8080/screen.png     # 返回 PNG 看板图
-curl  http://localhost:8080/api/display    # 返回轮询元信息 JSON
+# 5. 验证
+curl -s -o /tmp/s.png -w "HTTP %{http_code} size %{size_download}\n" http://localhost:8080/screen.png
+file /tmp/s.png        # 应为 PNG image data, 1072 x 1448
+curl http://localhost:8080/api/display   # {"image_url":"/screen.png",...}
 ```
 
-部署到 Kindle 侧（Alpine LXC，Linux x86_64）时交叉编译：
+交叉编译到 Kindle（Linux x86_64）：
 ```bash
-GOOS=linux GOARCH=amd64 go build -o kindle-dashboard .
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o kindle-dashboard .
 ```
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `main.go` | HTTP 服务骨架（`:8080`）。定义 `DashboardData`/`ForecastItem`/`CalendarCell` 结构体；`/screen.png` 调 `RenderDashboard` 返回 PNG，`/api/display` 返回轮询元信息；数据目前为 Mock（TODO 待接真实 API）。 |
-| `render.go` | 核心绘制实现。`func RenderDashboard(data DashboardData) ([]byte, error)`：用 `gg` 在 1072×1448 纯白画布上，按用户提供的 HTML/CSS 绝对坐标绘制三区（顶部时间/天气、5 日预报、整月日历），`image/png` 编码返回字节流。 |
-| `go.mod` | 依赖声明：`gg v1.3.0` + `golang.org/x/image v0.18.0`。 |
+| `main.go` | HTTP 服务骨架。定义 `DashboardData`/`ForecastItem`/`CalendarCell`；`/screen.png` 调 `RenderDashboard` 返回 PNG，`/api/display` 返回轮询元信息。数据现由 `fetchDashboardData()` 实时获取：时间/日期/星期/农历(`lunar-go`)、真实天气(`fetchWeather` via Open-Meteo，失败回退 `mockWeather`)、5 日预报、整月日历(`buildMonthGrid`)。 |
+| `render.go` | 核心绘制。`RenderDashboard(data)` 在 1072×1448 白底用 `gg` 画三区：顶部（时间+日期/农历居中、右侧圆角天气卡含温度/天气/区间/南宁）、中部 5 日预报横卡、下部 6 行月历。字体用 `sfnt`+`opentype` 解析 TTC 简体子变体；粗体偏移叠绘或真粗体。 |
+| `go.mod` | 依赖：`gg v1.3.0`、`golang.org/x/image v0.44.0`、`6tail/lunar-go v1.4.6`。 |
 | `.gitignore` | 排除 `.workbuddy/`、字体二进制（`*.ttf/*.ttc/*.otf`）、编译产物。 |
 
-## What Was Just Done (Most Recent Session)
+## What Was Just Done (2026-08-03 全天会话)
 
-1. **编写 `render.go`**（本会话核心交付）：
-   - 严格实现 `RenderDashboard(data DashboardData) ([]byte, error)`，对照用户给的 HTML/CSS 翻译三区布局到 `gg` 绝对坐标。
-   - 顶部区：大号时间(115px)/日期(32px)/农历(24px) 左对齐纵向居中；右侧圆角 16px、4px 黑边的天气卡片（内容右对齐）；底部 4px 分割线。
-   - 5 日预报：5 列圆角卡片，`IsToday` 黑底白字反色，其余白底黑框；中部因字体无法渲染 emoji，改用 `WeatherText`（中文天气）。
-   - 整月日历：7 列 6 行，表头周一为首；非本月浅灰虚线+淡字，今日黑底白字。
-2. **修复一处 `text()` 参数顺序笔误**（天气区间行的 `size`/`color` 写反）。
-3. **补齐画布背景**：显式白色矩形铺底，不依赖 `Clear()` 语义。
-4. **创建 GitHub 私有仓库** `cn-404-not-found/kindle-dashboard`，`git init` + 提交首个 commit，推送 `main`。
-5. **本会话关键决策（见下「Key Technical Decisions」）**：TTC 字体解析、粗体模拟、日期推导、月历列映射。
+> 本会话从断点续做（原代码从未真正编译过），完整修复编译 + 接入真实数据 + 多轮布局微调。
+
+1. **首次成功编译 + 渲染冒烟**：`golang.org/x/image/font/truetype` 包在任意版本都不存在 → 改为 `sfnt.ParseCollection`+`col.Font(0)`+`opentype.NewFace`。gg v1.3.0 无 `StrokeStringAnchored` → 粗体改为 ±0.8px 偏移叠绘模拟。
+2. **字体定为更纱黑体（Sarasa Gothic，OFL）**：双文件设计（`Sarasa-Regular.ttc` 必放、简体 Mono 子变体；`Sarasa-Bold.ttc` 可选真粗体），后简化为单文件即可。`selectSC()` 遍历子字体选含 "SC" 者、优先含 "mono"。
+3. **农历接入真实**：新增 `lunar-go` 依赖，`lunarDay()`（日）+`lunarMonthDay()`（月+日）；顶部 `LunarStr`、月历每格 `Lunar` 均实时计算。
+4. **天气接入 Open-Meteo**：`cityName/cityLat/cityLon` 常量（南宁 22.82/108.37）；`fetchWeather()` 拉 `current`(实时 temp+code) + `daily`(7 日 weather_code/max/min)；`wmoToText()` 映射 WMO→中文(晴/多云/阴/小雨/雷阵雨…)；失败回退 `mockWeather()`。`buildForecast()` 用真实天气。
+5. **日历列映射 bug 修复**：原 `data.Calendar[row][(c+1)%7]` 让 Sunday 列取成"本周起始周日"→8 号后错显 2 号。改为 c<6 取同行 c+1、c==6 取下一行 col 0。
+6. **顶部布局多轮微调（用户逐条要求）**：
+   - 时间放大到 128px 左对齐纵居中；
+   - 日期块(2026年 / 8月3日 / 农历 六月廿一)三行，居于"时间与天气卡之间区域"**居中**（用 `dc.MeasureString` 精确测时间宽度确定左缘，避免与时间重叠）；
+   - "南宁" 34px 画在天气卡左侧空白区、纵向居中；
+   - 温度/天气/区间三行在卡内垂直居中，温度 90px、天气与区间均 34px；
+   - 月历数字 60px、农历 31px、间距 7px。
+7. **日历末格"0"修复（关键）**：原 `[6][7]`=42 天，但周一为首排版最后一行周日(行5,列6)需取数据行6col0 → 越界 → 零值 Day=0。最终方案：**保持 `[6][7]`+6 行渲染**，对越界格在 render 层从 `gridStart.AddDate(0,0,42)` 推算正确日期(如 9月6日)与农历（**未用扩成 7 行方案**，用户明确要求保持 6 行）。
 
 ## Current State
 
 **Working:**
-- 代码结构完整，`main.go` 与 `render.go` 接口对齐（`RenderDashboard` 签名一致）。
-- GitHub 私有仓库已建好，源码（`.gitignore`/`go.mod`/`main.go`/`render.go`）已入库并推送，远端 `main` 与本地同步。
-- 本地 git 身份已设（仓库级）：`cn-404-not-found` / `cn-404-not-found@users.noreply.github.com`。
+- 全部代码已 `go build` 通过，本机实跑 `:8080` 产出有效 1072×1448 PNG（HTTP 200）。
+- 真实数据全部生效：Open-Meteo 南宁实时天气 + 7 日预报、lunar-go 农历、顶部居中三行日期、天气卡右上(温度/阴/区间)、"南宁"在卡左侧、6 行月历末格正常(9月6日+农历)。
+- 字体：同目录放 `Sarasa-Regular.ttc` 即正常（已在本机验证）；`Sarasa-Bold.ttc` 可选。
 
 **Broken / Known Issues:**
-- **无法本地编译验证**：本机没有 Go 工具链（`go` 不在 PATH），`go.mod` 依赖也未下载。需先装 Go 再 `go mod tidy`。
-- **Mock 数据未接真实源**：天气（实时温/最高/最低/天气现象）、5 日预报天气文本、月历农历（`LunarStr` 写死 "六月廿一"、`CalendarCell.Lunar` 为空）均为占位，`main.go` 内多处 `TODO`。
-- **字体缺失**：`msyh.ttc` 未入库（授权 + 体积原因），运行前必须手动放置。
+- 无已知 bug。最近一轮（23:06 渲染）日期不重叠、日历 6 行、末格正常。
+- 字体二进制 `*.ttc` 被 `.gitignore` 排除，不入库——部署/换机需手动放置。
 
 **In Progress:**
-- Go 工具链安装（上次被用户中断，未完成）。
+- 无。所有用户提出的可视化微调均已落地。
 
 ## Pending Tasks
 
-- 把 Go 工具链装上（用户原话："帮我把go环境装上"，后被中断）。
-- `go mod tidy && go build` 跑通并肉眼核对 `/screen.png` 渲染效果，微调字号/间距。
-- 将 Mock 天气与农历替换为真实 API（main.go 中 TODO 项）。
-- 部署到 Kindle 侧 Alpine LXC（交叉编译 + 字体随包）。
+- 部署到 Kindle 侧 Alpine LXC（交叉编译 + 字体随包 + 守护进程）。
+- （可选）顶部天气卡显示"实时此刻"还是"今日全天预报"口径未统一：当前顶部=实时 current(如 26°C 阴)，下方今日预报卡=全天 daily(如雷阵雨 32/25°)，二者均为真实数据、维度不同，用户已知晓非 bug。
 
 ## Key Technical Decisions
 
-- **TTC 字体用 `truetype.ParseCollection` 而非 `gg.LoadFontFace`**：`msyh.ttc` 是 TrueType Collection，`gg.LoadFontFace` 只能解析单字体，会失败。改用 `truetype.ParseCollection` + `Collection.Fonts[0].NewFace(...)`，并按字号缓存 `font.Face`。加载失败显式返回 error。
-- **粗体用「同色描边 + 填充」模拟**：`msyh.ttc` 不含粗体字形，HTML 里的 900/700 权重在墨水屏上以「填充 + 细描边」近似，观感合适。
-- **5 日预报 `MM/DD` 由 `DateStr` 推导**：`ForecastItem` 结构体**没有日期字段**（只有 `Weekday/WeatherText/HighTemp/LowTemp/IsToday`），所以渲染时以 `DashboardData.DateStr`（当天）为基准，`+i` 天算出 `MM/DD`。若以后想直接传日期，需改 `ForecastItem`。
-- **月历列映射 `dataCol = (c+1)%7`**：`Calendar` 网格本身是「周日为首」（`gridStart` 是包含 1 号的那个周日，`col0=Sun`），而 HTML 表头是「周一为首」（一…日）。显示列 `c` 须映射到数据列 `(c+1)%7`，否则表头与日期会错位。
-- **emoji 天气图标 → 中文 `WeatherText`**：`msyh.ttc` 渲染不出 ☀️/⛅ 等 emoji，预报卡片中部用 `WeatherText` 文本替代。
-- **`.gitignore` 排除 `.workbuddy/` 与字体**：WorkBuddy 本地项目数据、版权字体、编译产物都不入库。
+- **TTC 用 `sfnt.ParseCollection`+`opentype.NewFace`**：`golang.org/x/image/font/truetype` 在任何版本都不存在（已移除），`gg.LoadFontFace` 只认单 TTF。正确链路：`sfnt.ParseCollection`→`col.Font(i)`→`opentype.NewFace(font, &opentype.FaceOptions{Size,DPI:72,Hinting:font.HintingFull})`，按 (字号,粗体) 缓存 `font.Face`。
+- **单文件即可 + 粗体可选**：默认只 `Sarasa-Regular.ttc`（原名不改），`selectSC()` 选简体等宽；无 SC 时退回首个字形。粗体默认 ±0.8px 偏移叠绘；有 `Sarasa-Bold.ttc` 用真 Bold。
+- **x/image 不锁版本**：用户反对 pinned，放开到 latest（当前 v0.44.0）。
+- **月历列映射**：数据网格周日为首(col0=Sun)，UI 表头周一为首。c<6→数据列 c+1；c==6(周日)→下一行 col0。
+- **月历 6 行 + 末格越界推算**：保持 `[6][7]`(42天)，render 层对 (行5,列6) 用 `gridStart.AddDate(0,0,42)` 填正确日期/农历——**不要扩成 7 行**（用户明确要求 6 行）。
+- **日期块居中位置**：用 `r.dc.MeasureString(data.TimeStr)` 精确测时间宽度，左缘=时间右缘+50px，右缘=天气卡左缘-40px，三行在此区居中（hAlign=0.5）。不要用 `timeSize*0.65` 之类粗略估算，会和时间重叠。
+- **用户偏好**：保留更纱官方 TTC 原文件名不改；git 提交动作每次由用户主动触发（本次终于要提交）。
 
 ## Gotchas & Traps
 
-**`msyh.ttc` 是 TTC，直接 `gg.LoadFontFace` 会失败**
-`gg.LoadFontFace` 只认单字体 TTF，对 .ttc 合集无效（解析失败）。
-**Solution:** 用 `golang.org/x/image/font/truetype` 的 `ParseCollection`，取 `Fonts[0]` 调 `NewFace`。
-**Lesson:** 凡涉及「合集字体 / 多语种字体文件」，先确认扩展名是 .ttc 再用对应 API。
+**`golang.org/x/image/font/truetype` 包已不存在**
+gg 默认示例和老教程都用它，但任意 x/image 版本都无此包。
+**Solution:** `sfnt.ParseCollection` + `opentype.NewFace`。
+**Lesson:** 涉及 .ttc 合集字体先确认用 sfnt+opentype。
 
-**zsh 把 URL 里的 `?` 当通配符**
-上次用 `curl https://go.dev/dl/?mode=json` 下载 Go 时，zsh 报 "no matches found" 导致 curl 没拿到数据、安装中断。
-**Solution:** 给 URL 加引号，或改用 `curl -sSL "https://go.dev/dl/?mode=json"`。
-**Lesson:** 在 zsh 里跑带 `?`/`*` 的 curl，务必加双引号。
+**日历末格显示 0**
+[6][7] 仅 42 天，周一为首排版最后一行周日需取第 43 天 → 越界零值。
+**Solution:** render 层对越界格用 `gridStart.AddDate(0,0,42)` 推算（保持 6 行，不扩 7 行）。
+**Lesson:** 周一为首排版比周日为首多占 1 天，边缘格需特殊处理而非盲目扩行。
 
-**本机无 Go 工具链**
-`go` 不在 PATH，无法 `go build`/`go mod tidy`，所以 render.go 的编译正确性只能靠人工逐行核对 API。
-**Solution:** 装 Go 后第一件事就是 `go mod tidy && go build` 验证。
-**Lesson:** 交付 Go 代码前先确认目标机有工具链，否则编译错误要等用户环境才能发现。
+**日期与时间文字重叠**
+用 `timeSize*0.65` 估算时间宽度太窄，居中后左缘压到时间上。
+**Solution:** `dc.MeasureString` 实测宽度 + 50px 间距。
+**Lesson:** 文字宽度必须用 MeasureString，不能拍脑袋。
 
-**`Calendar` 是周日为首但表头周一为首**
-若不做列映射，月历数字会整体偏移一天。
-**Solution:** 渲染时显示列 `c` → 数据列 `(c+1)%7`。
-**Lesson:** 数据网格的"周起始日"和 UI 表头顺序必须显式对齐，别假设一致。
+**渲染验证时旧进程霸占 :8080**
+上次起的服务没杀，curl 拿到的是旧图。
+**Solution:** 改前先 `pkill -f kindle-dashboard`。
+**Lesson:** 重测前 kill 旧进程。
+
+**zsh 把 URL `?` 当通配符**
+`curl https://...?key=1` 报 no matches found。
+**Solution:** URL 加双引号。
+**Lesson:** zsh 里带 `?`/`*` 的 curl 必加引号。
 
 ## How to Deploy
 
 ```bash
-# 开发机（交叉编译到 Kindle 的 Alpine LXC，Linux x86_64）
+# 开发机交叉编译到 Kindle（Linux x86_64, alpine）
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o kindle-dashboard .
 
-# 把可执行文件 + msyh.ttc 一起传到设备
-scp kindle-dashboard msyh.ttc user@kindle:/opt/kindle-dashboard/
+# 传可执行文件 + 字体到设备（粗体可选）
+scp kindle-dashboard Sarasa-Regular.ttc user@kindle:/opt/kindle-dashboard/
+#   scp Sarasa-Bold.ttc user@kindle:/opt/kindle-dashboard/   # 可选
 
-# 设备上运行（建议用 supervisor / openrc 守护，监听 :8080）
+# 设备运行（建议 supervisor / openrc 守护，监听 :8080）
 /opt/kindle-dashboard/kindle-dashboard &
 
-# 墨水屏浏览器/轮询端访问
-#   GET http://<device-ip>:8080/screen.png   -> 看板 PNG
+# 墨水屏轮询端
+#   GET http://<device-ip>:8080/screen.png   -> 看板 PNG（每 60s）
 #   GET http://<device-ip>:8080/api/display   -> {image_url, filename, refresh_rate}
 ```
