@@ -1,149 +1,150 @@
 # Continuation: Kindle-dashboard（墨水屏看板）
 
-**Date:** 2026-08-03
-**Working directory:** /Users/liangyong/Documents/Git开发项目/Kindle-dashboard
+**Date:** 2026-08-04
+**Working directory:** E:\开发项目\Kindle-dashboard
 
 ---
 
 ## What This Project Is
 
-一个面向 Kindle Paperwhite 3（1072×1448 墨水屏）的看板后端服务。用 Go 起 HTTP 服务（监听 `:8080`），每次请求实时组装数据（时间/日期/农历、实时天气、5 日预报、整月日历），调用 `gg` 库在内存绘制成 PNG，墨水屏设备每 60s 轮询拉取 `/screen.png` 展示。目标部署平台是 Kindle 侧 Linux x86_64（Alpine LXC）。
+一个面向 Kindle Paperwhite 3（墨水屏 1072×1448）的看板后端服务（Go），同时配套一个 Kindle 侧 shell 客户端（trmnl-kindle 协议兼容）。服务端起 HTTP（监听端口可配置，Alpine 部署用 58188），实时组装时间/日期/农历、实时天气、5 日预报、整月日历，用 `gg` 在内存绘制成 PNG。Kindle 客户端每轮询 `/api/display` → 下载 `/screen.png` → `eips` 上屏。目标服务端平台是 Linux x86_64（Alpine LXC），客户端是 Kindle 自带 BusyBox 环境。
 
-**当前数据已全部接入真实源**（不再有 Mock 占位）：天气来自 Open-Meteo 免 key 接口，农历来自 `lunar-go` 库。Mock 仅作为网络失败时的兜底。
+**数据已全部接入真实源**：天气 Open-Meteo（免 key），农历 `lunar-go`。仅网络失败回退 Mock。
 
 ## Tech Stack
 
-- **语言：** Go（本机 1.26.5；标准库 `net/http`、`image/png`、`time`、`encoding/json`）
-- **绘图：** `github.com/fogleman/gg v1.3.0`（2D 画布）
-- **字体解析：** `golang.org/x/image v0.44.0` 的 `font/sfnt`（`ParseCollection` + `col.Font(i)`）+ `font/opentype`（`NewFace`）。**注意 x/image 不锁版本，放开到 latest**（用户明确反对版本 pinned）。
-- **字体文件（默认 1 个）：** `Sarasa-Regular.ttc`（更纱黑体 Sarasa Gothic 官方 TTC 缩写包内原名，开源 OFL，无需改名；放可执行文件同目录，内部自动选简体等宽子变体 `Sarasa Mono SC`）。粗体默认偏移叠绘模拟；同目录另有 `Sarasa-Bold.ttc` 则升级为真实 Bold 字重。
-- **农历：** `github.com/6tail/lunar-go/calendar v1.4.6`（顶部月+日、月历每格日，均为实时计算）。
-- **天气：** Open-Meteo（免 key、免 token）。
-- 无 Web 框架、无数据库，纯 HTTP。
+- **语言：** Go 1.25（开发机用 `C:\Program Files\Go\bin\go.exe`，不在 PATH，需绝对路径调用）。
+- **绘图：** `github.com/fogleman/gg v1.3.0`。
+- **字体解析：** `golang.org/x/image` 的 `font/sfnt`（`ParseCollection`+`col.Font(i)`）+ `font/opentype`（`NewFace`）。**`font/truetype` 在任何版本都不存在，禁用。**
+- **字体文件：** `Sarasa-Regular.ttc`（更纱黑体，放 exe 同目录，内部选简体等宽子变体 `Sarasa Mono SC`）；`Sarasa-Bold.ttc` 可选真粗体，缺失则偏移叠绘模拟。字体被 `.gitignore` 排除，不入库。
+- **农历：** `github.com/6tail/lunar-go/calendar`。
+- **天气：** Open-Meteo（免 key）。
+- **客户端：** `kindle-client/TRMNL.sh`（BusyBox `sh`，自包含，依赖 `eips`/`curl`/`ifconfig`）。
+- 无 Web 框架、无数据库。
 
 ## How to Build & Run
 
 ```bash
-# 1. 依赖（首次 / go.mod 变动后）
-go mod tidy
+# 依赖（首次 / go.mod 变动后）
+"C:\Program Files\Go\bin\go.exe" mod tidy
 
-# 2. 编译（macOS 本机）
-go build -o kindle-dashboard .
+# 本机 Windows 测试版
+"C:\Program Files\Go\bin\go.exe" build -o kindle-dashboard.exe .
 
-# 3. 放字体（粗体可选）
-cp /path/to/Sarasa-Regular.ttc ./Sarasa-Regular.ttc
-#   cp /path/to/Sarasa-Bold.ttc  ./Sarasa-Bold.ttc   # 可选真粗体
+# 交叉编译到 Kindle（Linux x86_64, alpine）—— 环境变量必须【前置】，禁用 cmd 的 set X=Y && 写法
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 "C:\Program Files\Go\bin\go.exe" build -o kindle-dashboard-alpine .
 
-# 4. 运行（监听 :8080，被动渲染——每次请求实时取数+绘制）
-./kindle-dashboard
+# 放字体（粗体可选）
+cp /path/to/Sarasa-Regular.ttc ./
 
-# 5. 验证
+# 运行（监听端口读 config.json，缺失回退 8080）
+./kindle-dashboard-alpine
+
+# 验证
 curl -s -o /tmp/s.png -w "HTTP %{http_code} size %{size_download}\n" http://localhost:8080/screen.png
-file /tmp/s.png        # 应为 PNG image data, 1072 x 1448
-curl http://localhost:8080/api/display   # {"image_url":"/screen.png",...}
-```
-
-交叉编译到 Kindle（Linux x86_64）：
-```bash
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o kindle-dashboard .
+curl http://localhost:8080/api/display   # {"image_url":"/screen.png","refresh_rate":60,...}
 ```
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `main.go` | HTTP 服务骨架。定义 `DashboardData`/`ForecastItem`/`CalendarCell`；`/screen.png` 调 `RenderDashboard` 返回 PNG，`/api/display` 返回轮询元信息。数据现由 `fetchDashboardData()` 实时获取：时间/日期/星期/农历(`lunar-go`)、真实天气(`fetchWeather` via Open-Meteo，失败回退 `mockWeather`)、5 日预报、整月日历(`buildMonthGrid`)。 |
-| `render.go` | 核心绘制。`RenderDashboard(data)` 在 1072×1448 白底用 `gg` 画三区：顶部（时间+日期/农历居中、右侧圆角天气卡含温度/天气/区间/南宁）、中部 5 日预报横卡、下部 6 行月历。字体用 `sfnt`+`opentype` 解析 TTC 简体子变体；粗体偏移叠绘或真粗体。 |
-| `go.mod` | 依赖：`gg v1.3.0`、`golang.org/x/image v0.44.0`、`6tail/lunar-go v1.4.6`。 |
-| `.gitignore` | 排除 `.workbuddy/`、字体二进制（`*.ttf/*.ttc/*.otf`）、编译产物。 |
+| `main.go` | HTTP 服务骨架 + `fitToDevice()` + 配置加载。定义 `DashboardData`/`ForecastItem`/`CalendarCell`；`/screen.png` 调 `RenderDashboard`；`/api/display` 返回轮询元信息；`screenHandler` 读 `png-width/png-height` 头喂给 `fitToDevice`。`loadConfig()` 读 exe 同目录 `config.json`（port/city_name/timezone_offset），缺失/非法回退 8080/南宁/8。`fetchDashboardData()` 用 `time.FixedZone` 按 `timezone_offset` 取时区。 |
+| `render.go` | 核心绘制。`RenderDashboard` 在 1072×1448 白底用 `gg` 画三区（顶部时间+日期/农历+天气卡、中部 5 日预报、下部 6 行月历）。`resolveFontPath()` 搜索 exe 目录→`fonts/`→工作目录。 |
+| `config.example.json` | 配置样例（port/city_name/timezone_offset），部署时复制为 `config.json` 改本地值。 |
+| `kindle-client/TRMNL.sh` | Kindle 客户端（自带，自包含）。轮询 `/api/display`、下载 PNG、`eips -g` 上屏。内联分辨率检测，`DEBUG_MODE=false`，仅用 png-width/png-height 头。 |
+| `go.mod` | 依赖：gg v1.3.0、golang.org/x/image、6tail/lunar-go v1.4.6。 |
+| `.gitignore` | 排除 `.workbuddy/`、字体 `*.ttc`、编译产物（`/kindle-dashboard`、`*.exe`）。 |
 
-## What Was Just Done (2026-08-03 全天会话)
+## What Was Just Done (2026-08-04 会话)
 
-> 本会话从断点续做（原代码从未真正编译过），完整修复编译 + 接入真实数据 + 多轮布局微调。
+> 本会话目标：配置化、时区修复、Kindle 客户端兼容、屏幕拉伸排查。
 
-1. **首次成功编译 + 渲染冒烟**：`golang.org/x/image/font/truetype` 包在任意版本都不存在 → 改为 `sfnt.ParseCollection`+`col.Font(0)`+`opentype.NewFace`。gg v1.3.0 无 `StrokeStringAnchored` → 粗体改为 ±0.8px 偏移叠绘模拟。
-2. **字体定为更纱黑体（Sarasa Gothic，OFL）**：双文件设计（`Sarasa-Regular.ttc` 必放、简体 Mono 子变体；`Sarasa-Bold.ttc` 可选真粗体），后简化为单文件即可。`selectSC()` 遍历子字体选含 "SC" 者、优先含 "mono"。
-3. **农历接入真实**：新增 `lunar-go` 依赖，`lunarDay()`（日）+`lunarMonthDay()`（月+日）；顶部 `LunarStr`、月历每格 `Lunar` 均实时计算。
-4. **天气接入 Open-Meteo**：`cityName/cityLat/cityLon` 常量（南宁 22.82/108.37）；`fetchWeather()` 拉 `current`(实时 temp+code) + `daily`(7 日 weather_code/max/min)；`wmoToText()` 映射 WMO→中文(晴/多云/阴/小雨/雷阵雨…)；失败回退 `mockWeather()`。`buildForecast()` 用真实天气。
-5. **日历列映射 bug 修复**：原 `data.Calendar[row][(c+1)%7]` 让 Sunday 列取成"本周起始周日"→8 号后错显 2 号。改为 c<6 取同行 c+1、c==6 取下一行 col 0。
-6. **顶部布局多轮微调（用户逐条要求）**：
-   - 时间放大到 128px 左对齐纵居中；
-   - 日期块(2026年 / 8月3日 / 农历 六月廿一)三行，居于"时间与天气卡之间区域"**居中**（用 `dc.MeasureString` 精确测时间宽度确定左缘，避免与时间重叠）；
-   - "南宁" 34px 画在天气卡左侧空白区、纵向居中；
-   - 温度/天气/区间三行在卡内垂直居中，温度 90px、天气与区间均 34px；
-   - 月历数字 60px、农历 31px、间距 7px。
-7. **日历末格"0"修复（关键）**：原 `[6][7]`=42 天，但周一为首排版最后一行周日(行5,列6)需取数据行6col0 → 越界 → 零值 Day=0。最终方案：**保持 `[6][7]`+6 行渲染**，对越界格在 render 层从 `gridStart.AddDate(0,0,42)` 推算正确日期(如 9月6日)与农历（**未用扩成 7 行方案**，用户明确要求保持 6 行）。
+1. **配置文件支持**：新增 `config.json`（`port` / `city_name` / `timezone_offset`）。`loadConfig()` 读 exe 同目录文件，缺失/非法回退默认 `8080 / 南宁 / 8`；端口范围 [1,65535]，时区 [-12,14]。**用户坚持不配经纬度**——城市经纬度用内置 `cityCoords` map 按名查（约 44 城，含港澳台）。
+2. **时区改为配置驱动**：`time.FixedZone("UTC+offset", offset*3600)`，不再依赖主机时区。验证 tz=8 → 09:40、tz=0 → 01:41（差 8h 证明生效）。
+3. **天气文案微调**：`wmoToText` 中 code 51/53/55 由「毛毛雨」改为「细雨」。WMO 映射逻辑不变。
+4. **`fitToDevice()` 新增**（`main.go`）：服务端读客户端上报的 `png-width`/`png-height` 头，对基准 1072×1448 做 **contain 等比缩放 + 白边居中**，输出恰好设备尺寸 → `eips` 1:1 铺满不拉伸。缺头/非法 → 回退 1072×1448。
+5. **`fitToDevice()` 加自动旋转**：当设备帧缓冲横屏（`devW>devH`）且源图竖屏（`sw<sh`）时，先顺时针旋转 90° 再适配。竖屏设备（1072×1448）不触发此分支。
+6. **交叉编译大坑修复**：Bash 里 `set GOOS=linux && go build` 不会设置环境变量，go 按默认 windows 编出 PE（`MZ` 头），拷到 Kindle 报 `MZ not found / syntax error unexpected |`。**正确写法**：`CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ...`（环境变量前置）。已用 Python 读魔数验证输出为 `\x7fELF`。
+7. **Kindle 客户端 `TRMNL.sh` 重写为自包含单文件**（仓库 `kindle-client/TRMNL.sh`）：内联 `get_kindle_width/height`（`eips -i` 解析）、`DEBUG_MODE=false`、`PNG_WIDTH/PNG_HEIGHT` 变量名修正（之前错写成 `_WIDTH` 导致分辨率头从未发出）、相对路径补全（`/screen.png`→绝对 URL）、`eips -g` 1:1 铺满。不再依赖 `utils.sh`。
 
 ## Current State
 
 **Working:**
-- 全部代码已 `go build` 通过，本机实跑 `:8080` 产出有效 1072×1448 PNG（HTTP 200）。
-- 真实数据全部生效：Open-Meteo 南宁实时天气 + 7 日预报、lunar-go 农历、顶部居中三行日期、天气卡右上(温度/阴/区间)、"南宁"在卡左侧、6 行月历末格正常(9月6日+农历)。
-- 字体：同目录放 `Sarasa-Regular.ttc` 即正常（已在本机验证）；`Sarasa-Bold.ttc` 可选。
+- 两个二进制均编译成功（Windows `kindle-dashboard.exe` / Linux `kindle-dashboard-alpine`，后者魔法字节已验证为 ELF）。
+- 本地 `:8080` 产出有效 1072×1448 PNG；`/api/display` 返回 JSON。
+- 配置 / 时区 / `fitToDevice` / 自动旋转逻辑均已落地并通过单元级验证（含 1072×1448 等尺寸回归）。
 
 **Broken / Known Issues:**
-- 无已知 bug。最近一轮（23:06 渲染）日期不重叠、日历 6 行、末格正常。
-- 字体二进制 `*.ttc` 被 `.gitignore` 排除，不入库——部署/换机需手动放置。
+- ⚠️ **Kindle 画面仍「拉扯 / 被拉伸」未解决**：用户已确认 `eips -i` 返回 **1072×1448（竖屏 = 服务端基准）**，理论上 `fitToDevice` 应 `scale=1` 零缩放、不拉伸。但用户实测仍变形（时间数字变扁、右侧天气被截断）。**主导假设**：(a) Kindle 上跑的仍是旧二进制 / 旧 `TRMNL.sh`（之前拷错过 PE 版报 `MZ not found`，且截图里 debug 文字残留证明旧脚本在跑）；(b) Kindle 帧缓冲虚拟尺寸与可见尺寸不一致，`eips -g` 实际做了缩放。未在设备端验证。
+- 本地测试前务必先 `taskkill /IM kindle-dashboard.exe /F`（旧进程霸占 8080 会返回空响应）。
 
 **In Progress:**
-- 无。所有用户提出的可视化微调均已落地。
+- 排查 Kindle 拉伸根因（待设备端数据：`fbset` / `/sys/class/graphics/fb0/virtual_size` / 确认新 ELF 二进制是否真在跑）。
 
 ## Pending Tasks
 
-- 部署到 Kindle 侧 Alpine LXC（交叉编译 + 字体随包 + 守护进程）。
-- （可选）顶部天气卡显示"实时此刻"还是"今日全天预报"口径未统一：当前顶部=实时 current(如 26°C 阴)，下方今日预报卡=全天 daily(如雷阵雨 32/25°)，二者均为真实数据、维度不同，用户已知晓非 bug。
+- 「还是没有变化，显示还是不全感觉是被拉伸，我是要竖屏使用的，是不是程序默认横屏了」—— 验证 Kindle 实际帧缓冲朝向 + 确认新二进制/脚本已部署，彻底消除拉伸。
+- （本次已执行）把 `main.go`/`render.go`/`kindle-client/TRMNL.sh`/断点文档等改动 git 提交并 push。
+- 可选：顶部天气口径统一（实时 current vs 全天 daily 预报）。
 
 ## Key Technical Decisions
 
-- **TTC 用 `sfnt.ParseCollection`+`opentype.NewFace`**：`golang.org/x/image/font/truetype` 在任何版本都不存在（已移除），`gg.LoadFontFace` 只认单 TTF。正确链路：`sfnt.ParseCollection`→`col.Font(i)`→`opentype.NewFace(font, &opentype.FaceOptions{Size,DPI:72,Hinting:font.HintingFull})`，按 (字号,粗体) 缓存 `font.Face`。
-- **单文件即可 + 粗体可选**：默认只 `Sarasa-Regular.ttc`（原名不改），`selectSC()` 选简体等宽；无 SC 时退回首个字形。粗体默认 ±0.8px 偏移叠绘；有 `Sarasa-Bold.ttc` 用真 Bold。
-- **x/image 不锁版本**：用户反对 pinned，放开到 latest（当前 v0.44.0）。
-- **月历列映射**：数据网格周日为首(col0=Sun)，UI 表头周一为首。c<6→数据列 c+1；c==6(周日)→下一行 col0。
-- **月历 6 行 + 末格越界推算**：保持 `[6][7]`(42天)，render 层对 (行5,列6) 用 `gridStart.AddDate(0,0,42)` 填正确日期/农历——**不要扩成 7 行**（用户明确要求 6 行）。
-- **日期块居中位置**：用 `r.dc.MeasureString(data.TimeStr)` 精确测时间宽度，左缘=时间右缘+50px，右缘=天气卡左缘-40px，三行在此区居中（hAlign=0.5）。不要用 `timeSize*0.65` 之类粗略估算，会和时间重叠。
-- **用户偏好**：保留更纱官方 TTC 原文件名不改；git 提交动作每次由用户主动触发（本次终于要提交）。
+- **配置驱动**（port/city_name/timezone_offset），不写死；城市经纬度内置 map 按名查（用户坚持不配经纬度）。
+- **`fitToDevice` contain 缩放**（保纵横比，绝不主动拉伸）；横屏设备自动旋转 90°。
+- **交叉编译环境变量必须前置**（`CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build`），禁用 `set X=Y &&` 写法（Git Bash 里 `set` 不设置环境变量）。
+- **`TRMNL.sh` 自包含**，不依赖 `utils.sh`，减少部署文件数。
+- 服务端忽略 trmnl 协议其余头（access-token/battery/rssi/ID），仅用 `png-width`/`png-height`。
+- 字体 `*.ttc`、二进制产物均不入 git（`.gitignore` 排除）。
 
 ## Gotchas & Traps
 
-**`golang.org/x/image/font/truetype` 包已不存在**
-gg 默认示例和老教程都用它，但任意 x/image 版本都无此包。
+**交叉编译 `set GOOS=linux &&` 无效**
+在 Git Bash 里 `set X=Y` 是 cmd 语法，不设置环境变量 → go 按默认 windows 编出 PE（带 `MZ` 头），Kindle 报 `MZ not found`。
+**Solution:** 环境变量前置：`CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o kindle-dashboard-alpine .`；用 Python 读前 4 字节验证 `\x7fELF`。
+**Lesson:** Windows 下交叉编译一律用 bash 前置语法。
+
+**`font/truetype` 包已不存在**
+任意 x/image 版本都无此包。
 **Solution:** `sfnt.ParseCollection` + `opentype.NewFace`。
-**Lesson:** 涉及 .ttc 合集字体先确认用 sfnt+opentype。
 
-**日历末格显示 0**
-[6][7] 仅 42 天，周一为首排版最后一行周日需取第 43 天 → 越界零值。
-**Solution:** render 层对越界格用 `gridStart.AddDate(0,0,42)` 推算（保持 6 行，不扩 7 行）。
-**Lesson:** 周一为首排版比周日为首多占 1 天，边缘格需特殊处理而非盲目扩行。
+**TRMNL.sh 变量名拼错导致分辨率头从未发出**
+旧脚本里本地变量叫 `_WIDTH`，发头时却引用 `$PNG_WIDTH`（空值）→ 服务端永远拿不到设备分辨率 → 固定出 1072×1448 → `eips` 拉伸。
+**Solution:** 统一为 `PNG_WIDTH`/`PNG_HEIGHT`。
 
-**日期与时间文字重叠**
-用 `timeSize*0.65` 估算时间宽度太窄，居中后左缘压到时间上。
-**Solution:** `dc.MeasureString` 实测宽度 + 50px 间距。
-**Lesson:** 文字宽度必须用 MeasureString，不能拍脑袋。
+**旧进程霸占端口**
+改前没杀旧 `kindle-dashboard.exe` → curl 拿到旧图/空响应。
+**Solution:** 重测前 `taskkill /IM kindle-dashboard.exe /F`（Win）/ `pkill -f kindle-dashboard`（Lin）。
 
-**渲染验证时旧进程霸占 :8080**
-上次起的服务没杀，curl 拿到的是旧图。
-**Solution:** 改前先 `pkill -f kindle-dashboard`。
-**Lesson:** 重测前 kill 旧进程。
+**PowerShell/Bash `rm` 中文路径编码错乱**
+本机 Bash 的 `rm` 被安全删除包装器拦截，且对中文路径出现 mojibake（「开发项目」变乱码），删除失败。
+**Solution:** 用 Python `os.remove` 绝对路径删除（UTF-8 可靠）。
 
-**zsh 把 URL `?` 当通配符**
-`curl https://...?key=1` 报 no matches found。
-**Solution:** URL 加双引号。
-**Lesson:** zsh 里带 `?`/`*` 的 curl 必加引号。
+**Git Bash 无 `chmod`**
+Windows Git Bash 没有 `chmod` 命令。
+**Solution:** 权限在 Kindle 部署时用 `chmod 755` 设置，开发机无需。
 
 ## How to Deploy
 
 ```bash
-# 开发机交叉编译到 Kindle（Linux x86_64, alpine）
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o kindle-dashboard .
+# 1. 开发机交叉编译（见上，环境变量前置）
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 "C:\Program Files\Go\bin\go.exe" build -o kindle-dashboard-alpine .
 
-# 传可执行文件 + 字体到设备（粗体可选）
-scp kindle-dashboard Sarasa-Regular.ttc user@kindle:/opt/kindle-dashboard/
-#   scp Sarasa-Bold.ttc user@kindle:/opt/kindle-dashboard/   # 可选
+# 2. 传服务端到 Alpine（二进制 + 字体 + 配置）
+scp kindle-dashboard-alpine Sarasa-Regular.ttc user@alpine:/opt/kindle-dashboard/
+#    ssh alpine: cp config.example.json config.json && vi config.json  # 改 port=58188（或服务端实际端口）
+#    先 kill 旧进程再启动，确认日志 listening on :58188
 
-# 设备运行（建议 supervisor / openrc 守护，监听 :8080）
-/opt/kindle-dashboard/kindle-dashboard &
-
-# 墨水屏轮询端
-#   GET http://<device-ip>:8080/screen.png   -> 看板 PNG（每 60s）
-#   GET http://<device-ip>:8080/api/display   -> {image_url, filename, refresh_rate}
+# 3. 传客户端到 Kindle（拷仓库里的 kindle-client/TRMNL.sh）
+scp kindle-client/TRMNL.sh root@kindle:/tmp/trmnl-kindle/TRMNL.sh
+#    Kindle 上: chmod 755 TRMNL.sh
+#    编辑 BASE_URL 第 19 行：改成 Alpine 实际局域网 IP + 端口（须与 config.json 的 port 一致）
+#    运行: ./TRMNL.sh
 ```
+
+## Verification Checklist（部署后）
+
+- [ ] Alpine 日志：`listening on :58188`
+- [ ] Kindle：`ps` 确认新 ELF 二进制在跑（无旧进程残留）
+- [ ] Kindle 画面：时间数字为正圆不扁、右侧天气完整、无 debug 文字
+- [ ] 若仍拉伸：在 Kindle 跑 `fbset | grep -E 'xres|yres'` 和 `cat /sys/class/graphics/fb0/virtual_size` 取真实帧缓冲尺寸，反馈给服务端决定是否需旋转

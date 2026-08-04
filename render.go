@@ -217,15 +217,32 @@ func RenderDashboard(data DashboardData) ([]byte, error) {
 	return pngBytes, nil
 }
 
-// resolveFontPath 优先返回「可执行文件同目录」下的字体路径，否则回退到相对路径。
+// resolveFontPath 按以下顺序查找资源文件（字体 / 配置等）：
+//  1. 可执行文件同目录
+//  2. 可执行文件同目录下的 fonts/ 子目录
+//  3. 进程工作目录
+//  4. 工作目录下的 fonts/ 子目录
+// 任一命中即返回；全未命中则回退为 name 本身（交由后续 os.Open 报错）。
 func resolveFontPath(name string) string {
+	candidates := []string{}
 	if exe, err := os.Executable(); err == nil {
-		p := filepath.Join(filepath.Dir(exe), name)
+		dir := filepath.Dir(exe)
+		candidates = append(candidates,
+			filepath.Join(dir, name),
+			filepath.Join(dir, "fonts", name),
+		)
+	}
+	candidates = append(candidates,
+		name,
+		filepath.Join("fonts", name),
+	)
+
+	for _, p := range candidates {
 		if _, err := os.Stat(p); err == nil {
 			return p
 		}
 	}
-	return name // 回退：依赖进程工作目录中存在该文件
+	return name
 }
 
 // loadSCFont 读取指定 TTC 文件，解析合集并选出简体(SC)子变体（优先 fontStyle 风格）。

@@ -7,11 +7,19 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/draw"
+	"image/png"
 	"log"
+	"math"
 	"net/http"
+	"os"
+	"strconv"
 	"time"
+	xdraw "golang.org/x/image/draw"
 
 	"github.com/6tail/lunar-go/calendar"
 )
@@ -72,12 +80,119 @@ type displayResponse struct {
 // weekdayNames 中文星期名称，索引与 time.Weekday 对齐（0=周日）。
 var weekdayNames = []string{"周日", "周一", "周二", "周三", "周四", "周五", "周六"}
 
-// ---- 位置配置（Kindle 一般固定放置，按需修改）----
-const (
-	cityName = "南宁"   // 图上展示的城市名
-	cityLat  = 22.82    // 南宁纬度（Open-Meteo 用）
-	cityLon  = 108.37   // 南宁经度
-)
+// ----------------------------------------------------------------------------
+// 运行时配置（可选 config.json，位于可执行文件同目录）
+// ----------------------------------------------------------------------------
+
+// serverConfig 聚合可通过配置文件覆盖的运行时参数。
+// 默认值与历史硬编码一致，保证不提供配置文件时行为完全不变。
+// 注意：经纬度不在此处配置——它们由代码按 CityName 查 cityCoords 表得到；
+// 配置文件只需写 port、city_name 与 timezone_offset 三个字段（后两者有合理默认）。
+type serverConfig struct {
+	Port           int    `json:"port"`            // 监听端口（默认 8080）
+	CityName       string `json:"city_name"`       // 图上展示的城市名（默认 南宁）；经纬度按表查得
+	TimezoneOffset int    `json:"timezone_offset"` // 相对 UTC 的小时偏移（默认 8，即中国 UTC+8）；决定看板显示时间，不依赖宿主时区
+}
+
+// cfg 为全局运行时配置，由 main 启动时 loadConfig 填充。
+var cfg serverConfig
+
+// appLoc 为根据配置时区偏移构造的固定时区，看板所有时间/日期均以此为准。
+var appLoc *time.Location
+
+// defaultConfig 返回内置默认配置。
+func defaultConfig() serverConfig {
+	return serverConfig{
+		Port:           8080,
+		CityName:       "南宁",
+		TimezoneOffset: 8, // 中国 UTC+8
+	}
+}
+
+// cityCoords 内置「城市名 → 经纬度」查表，避免用户在配置文件中手写经纬度。
+// 未收录的城市将回退到默认值（南宁）。如需新增城市，在此追加一行即可。
+var cityCoords = map[string][2]float64{
+	"南宁":     {22.82, 108.37},
+	"北京":     {39.90, 116.40},
+	"上海":     {31.23, 121.47},
+	"广州":     {23.13, 113.26},
+	"深圳":     {22.54, 114.06},
+	"杭州":     {30.27, 120.15},
+	"成都":     {30.57, 104.07},
+	"武汉":     {30.59, 114.31},
+	"西安":     {34.34, 108.94},
+	"重庆":     {29.56, 106.55},
+	"南京":     {32.06, 118.80},
+	"天津":     {39.13, 117.20},
+	"苏州":     {31.30, 120.62},
+	"长沙":     {28.23, 112.94},
+	"沈阳":     {41.80, 123.43},
+	"青岛":     {36.07, 120.38},
+	"郑州":     {34.75, 113.62},
+	"大连":     {38.91, 121.61},
+	"厦门":     {24.48, 118.09},
+	"昆明":     {25.04, 102.71},
+	"哈尔滨":   {45.80, 126.53},
+	"济南":     {36.65, 117.00},
+	"福州":     {26.07, 119.30},
+	"贵阳":     {26.65, 106.63},
+	"太原":     {37.87, 112.55},
+	"兰州":     {36.06, 103.83},
+	"海口":     {20.04, 110.20},
+	"拉萨":     {29.65, 91.13},
+	"乌鲁木齐": {43.83, 87.62},
+	"呼和浩特": {40.84, 111.75},
+	"银川":     {38.49, 106.23},
+	"西宁":     {36.62, 101.78},
+	"石家庄":   {38.04, 114.51},
+	"南昌":     {28.68, 115.86},
+	"合肥":     {31.82, 117.23},
+	"宁波":     {29.87, 121.55},
+	"无锡":     {31.49, 120.31},
+	"常州":     {31.81, 119.97},
+	"东莞":     {23.02, 113.75},
+	"佛山":     {23.02, 113.12},
+	"珠海":     {22.27, 113.58},
+	"香港":     {22.32, 114.17},
+	"澳门":     {22.20, 113.54},
+	"台北":     {25.03, 121.57},
+}
+
+// resolveCityCoords 按城市名查表返回经纬度（lat, lon）。
+// 命中返回 (lat, lon, true)；未收录返回默认城市（南宁）坐标并报警告。
+func resolveCityCoords(name string) (lat, lon float64, ok bool) {
+	if c, found := cityCoords[name]; found {
+		return c[0], c[1], true
+	}
+	log.Printf("未收录城市 %q，天气经纬度回退到默认（南宁）", name)
+	return cityCoords["南宁"][0], cityCoords["南宁"][1], false
+}
+
+// loadConfig 读取 exe 同目录（回退工作目录）的 config.json。
+// 文件缺失时返回默认配置；解析失败或端口非法时同样回退默认，确保启动不中断。
+// 仅 JSON 中显式出现的字段会覆盖默认值，未出现的保留默认。
+func loadConfig() serverConfig {
+	c := defaultConfig()
+	data, err := os.ReadFile(resolveFontPath("config.json"))
+	if err != nil {
+		return c // 无配置文件 → 全部使用默认
+	}
+	if err := json.Unmarshal(data, &c); err != nil {
+		log.Printf("配置文件解析失败，使用默认配置: %v", err)
+		return defaultConfig()
+	}
+	// 端口合法性兜底：非法值回退默认 8080，避免 ListenAndServe 失败。
+	if c.Port <= 0 || c.Port > 65535 {
+		log.Printf("配置端口 %d 非法，回退默认 8080", c.Port)
+		c.Port = defaultConfig().Port
+	}
+	// 时区偏移兜底：超出合理范围 [-12, 14] 视为非法，回退默认 8（中国 UTC+8）。
+	if c.TimezoneOffset < -12 || c.TimezoneOffset > 14 {
+		log.Printf("配置时区偏移 %d 非法，回退默认 8（UTC+8）", c.TimezoneOffset)
+		c.TimezoneOffset = defaultConfig().TimezoneOffset
+	}
+	return c
+}
 
 // wmoToText 将 WMO weather_code 映射为中文天气现象。
 // 参考：https://open-meteo.com/en/docs 的 weather_code 说明。
@@ -94,7 +209,7 @@ func wmoToText(code int) string {
 	case 45, 48:
 		return "雾"
 	case 51, 53, 55:
-		return "毛毛雨"
+		return "细雨"
 	case 56, 57:
 		return "冻雨"
 	case 61:
@@ -134,12 +249,13 @@ type weatherResult struct {
 // fetchWeather 从 Open-Meteo（免 key、免费）拉取实时天气与 7 日预报。
 // 成功返回 (结果, true)；网络/解析失败时返回 (空, false)，调用方回退到 Mock。
 func fetchWeather() (weatherResult, bool) {
+	lat, lon, _ := resolveCityCoords(cfg.CityName)
 	url := fmt.Sprintf(
 		"https://api.open-meteo.com/v1/forecast?latitude=%.2f&longitude=%.2f"+
 			"&current=temperature_2m,weather_code"+
 			"&daily=weather_code,temperature_2m_max,temperature_2m_min"+
 			"&timezone=Asia%%2FShanghai&forecast_days=7",
-		cityLat, cityLon,
+		lat, lon,
 	)
 	resp, err := http.Get(url)
 	if err != nil {
@@ -205,7 +321,8 @@ func mockWeather() weatherResult {
 
 // fetchDashboardData 实时获取系统时间、真实天气与农历，并组装看板数据。
 func fetchDashboardData() DashboardData {
-	now := time.Now()
+	// 以配置时区（默认 UTC+8）为准取当前时刻，不依赖宿主系统时区设置。
+	now := time.Now().In(appLoc)
 
 	// 时间/日期字符串通过 time.Now() 实时获取。
 	timeStr := now.Format("15:04")
@@ -222,7 +339,7 @@ func fetchDashboardData() DashboardData {
 		TimeStr:  timeStr,
 		DateStr:  dateStr,
 		LunarStr: lunarMonthDay(now.Year(), int(now.Month()), now.Day()), // 真实农历（月+日）
-		Location: cityName,
+		Location: cfg.CityName,
 
 		// --- 实时天气（Open-Meteo 真实数据，失败回退 Mock）---
 		Temp:        w.temp,
@@ -316,11 +433,85 @@ func screenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 适配设备帧缓冲尺寸：trmnl-kindle 客户端会在请求头上报 png-width/png-height
+	// （即 eips -i 得到的屏幕分辨率）。服务端把基准图缩放/居中到正好匹配设备尺寸，
+	// 保持纵横比、多余区域填白，避免 eips 把图拉伸填充而变形。
+	// 若客户端未上报或上报非法，则回退到基准 1072×1448 原图。
+	if wStr := r.Header.Get("png-width"); wStr != "" {
+		if hStr := r.Header.Get("png-height"); hStr != "" {
+			if dw, e1 := strconv.Atoi(wStr); e1 == nil && dw > 0 {
+				if dh, e2 := strconv.Atoi(hStr); e2 == nil && dh > 0 {
+					if out, e3 := fitToDevice(pngBytes, dw, dh); e3 != nil {
+						log.Printf("适配设备分辨率失败，回退原图: %v", e3)
+					} else {
+						pngBytes = out
+					}
+				}
+			}
+		}
+	}
+
 	w.Header().Set("Content-Type", "image/png")
 	// 墨水屏设备通常会缓存图片，禁用缓存以保证每次拉取最新画面。
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
 	w.Write(pngBytes)
+}
+
+// fitToDevice 将基准 PNG（1072×1448）缩放/居中适配到设备帧缓冲尺寸 devW×devH，
+// 保持纵横比（contain），超出区域填白。这样 eips 能以 1:1 铺满屏幕、不再拉伸变形。
+//
+// 特殊处理：Kindle 等墨水屏设备的 framebuffer 可能是横屏存储（如 1448×1072），
+// 但用户竖屏握持。当检测到 devW > devH（横屏帧缓冲）且源图为竖屏（sw < sh）时，
+// 自动将源图顺时针旋转 90° 后再适配，确保竖屏内容在横屏 framebuffer 上正确显示。
+func fitToDevice(src []byte, devW, devH int) ([]byte, error) {
+	img, err := png.Decode(bytes.NewReader(src))
+	if err != nil {
+		return nil, err
+	}
+	sb := img.Bounds()
+	sw, sh := sb.Dx(), sb.Dy()
+	if sw <= 0 || sh <= 0 {
+		return nil, fmt.Errorf("源图尺寸非法 %dx%d", sw, sh)
+	}
+
+	// 自动旋转：横屏 framebuffer + 竖屏源图 → 顺时针转 90°
+	if devW > devH && sw < sh {
+		img = rotate90CW(img, sw, sh)
+		sw, sh = sh, sw // 旋转后宽高互换
+	}
+
+	dst := image.NewRGBA(image.Rect(0, 0, devW, devH))
+	draw.Draw(dst, dst.Bounds(), image.White, image.Point{}, draw.Src)
+
+	scale := math.Min(float64(devW)/float64(sw), float64(devH)/float64(sh))
+	nw, nh := int(math.Round(float64(sw)*scale)), int(math.Round(float64(sh)*scale))
+	if nw <= 0 || nh <= 0 {
+		return nil, fmt.Errorf("缩放后尺寸过小 %dx%d", nw, nh)
+	}
+	scaled := image.NewRGBA(image.Rect(0, 0, nw, nh))
+	xdraw.BiLinear.Scale(scaled, scaled.Bounds(), img, img.Bounds(), draw.Src, nil)
+
+	ox, oy := (devW-nw)/2, (devH-nh)/2
+	draw.Draw(dst, image.Rect(ox, oy, ox+nw, oy+nh), scaled, image.Point{}, draw.Over)
+
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, dst); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// rotate90CW 将图像顺时针旋转 90 度。
+// 输出尺寸为 (h, w)，像素映射：src(x,y) → dst(h-1-y, x)
+func rotate90CW(img image.Image, w, h int) image.Image {
+	dst := image.NewRGBA(image.Rect(0, 0, h, w))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			dst.Set(h-1-y, x, img.At(x, y))
+		}
+	}
+	return dst
 }
 
 // apiDisplayHandler 处理 GET /api/display：返回前端轮询所需的元信息。
@@ -337,10 +528,13 @@ func apiDisplayHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	cfg = loadConfig()
+	// 根据配置时区偏移构造固定时区（中国默认 UTC+8）；看板时间以配置为准，不受宿主时区影响。
+	appLoc = time.FixedZone(fmt.Sprintf("UTC%+d", cfg.TimezoneOffset), cfg.TimezoneOffset*3600)
 	http.HandleFunc("/screen.png", screenHandler)
 	http.HandleFunc("/api/display", apiDisplayHandler)
 
-	addr := ":8080"
+	addr := fmt.Sprintf(":%d", cfg.Port)
 	log.Printf("Kindle dashboard backend listening on %s", addr)
 	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Fatalf("server exited: %v", err)
