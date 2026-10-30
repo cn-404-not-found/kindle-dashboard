@@ -52,6 +52,8 @@ type DashboardData struct {
 	TimeStr          string `json:"time_str"`  // 当前时间，如 "10:43"
 	DateStr          string `json:"date_str"`  // 当前日期，如 "2026年08月03日"
 	LunarStr         string `json:"lunar_str"` // 农历/节气，如 "六月廿一"
+	ObservedAt       time.Time
+	ForecastAt       time.Time
 	WeatherStatus    string `json:"weather_status"`
 	WeatherAvailable bool   `json:"weather_available"`
 	Location         string `json:"location"` // 城市名，如 "南宁"（图上展示用）
@@ -217,6 +219,8 @@ func fetchDashboardData() DashboardData {
 		LunarStr:         lunarMonthDay(now.Year(), int(now.Month()), now.Day()), // 真实农历（月+日）
 		Location:         cfg.CityName,
 		WeatherStatus:    status,
+		ObservedAt:       w.observedAt,
+		ForecastAt:       w.forecastAt,
 		WeatherAvailable: ok,
 
 		// --- 实时天气（Open-Meteo 真实数据，失败回退 Mock）---
@@ -234,6 +238,9 @@ func fetchDashboardData() DashboardData {
 // buildForecast 基于今天生成未来 5 日的预报：星期/日期由 now 推导（真实），
 // 天气现象与最高/最低温取自真实拉取的 w.forecast（失败时为 Mock 兜底）。
 func buildForecast(now time.Time, w weatherResult) []ForecastItem {
+	if !w.forecastDate.IsZero() && (w.forecastDate.Year() != now.Year() || w.forecastDate.YearDay() != now.YearDay()) {
+		return nil
+	}
 	n := len(w.forecast)
 	if n > 5 {
 		n = 5
@@ -252,10 +259,26 @@ func buildForecast(now time.Time, w weatherResult) []ForecastItem {
 	return items
 }
 
+var solarFestivals = map[string]string{"01-01": "元旦", "05-01": "劳动节", "10-01": "国庆节"}
+
 // lunarDay 返回指定公历日期对应的农历「日」（如 "廿一"）。
 // 用于月历网格中每个单元格下方的农历小字。
 func lunarDay(year, month, day int) string {
-	return calendar.NewSolarFromYmd(year, month, day).GetLunar().GetDayInChinese()
+	solar := calendar.NewSolarFromYmd(year, month, day)
+	lunar := solar.GetLunar()
+	if festivals := lunar.GetFestivals(); festivals.Len() > 0 {
+		return festivals.Front().Value.(string)
+	}
+	if festival, ok := solarFestivals[fmt.Sprintf("%02d-%02d", month, day)]; ok {
+		return festival
+	}
+	if term := lunar.GetJieQi(); term != "" {
+		return term
+	}
+	if lunar.GetDayInChinese() == "初一" {
+		return lunar.GetMonthInChinese() + "月"
+	}
+	return lunar.GetDayInChinese()
 }
 
 // lunarMonthDay 返回指定公历日期对应的农历「月+日」（如 "六月廿一"）。
@@ -266,15 +289,15 @@ func lunarMonthDay(year, month, day int) string {
 }
 
 // buildMonthGrid 构建当前月份的 7×6 月历网格。
-// 网格从“包含本月 1 号的那个周日”开始，覆盖完整的 6 周（42 天），
+// 网格从包含本月 1 号的周一开始，覆盖完整的 6 周（42 天），
 // 跨月的单元格通过 IsCurrentMonth=false 标记，今天通过 IsToday=true 标记。
-// 农历 Lunar 字段暂时留空，待接入真实农历计算。
+// 节日、节气及农历月份显示在日期下方。
 func buildMonthGrid(now time.Time) [6][7]CalendarCell {
 	year, month, _ := now.Date()
 	loc := now.Location()
 
 	firstOfMonth := time.Date(year, month, 1, 0, 0, 0, 0, loc)
-	startOffset := int(firstOfMonth.Weekday()) // 1 号是周几 → 前面需补几天
+	startOffset := (int(firstOfMonth.Weekday()) + 6) % 7 // 1 号是周几 → 前面需补几天
 	gridStart := firstOfMonth.AddDate(0, 0, -startOffset)
 
 	var grid [6][7]CalendarCell

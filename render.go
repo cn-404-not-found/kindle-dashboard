@@ -111,6 +111,19 @@ func (r *renderer) text(x, y float64, s string, size float64, c color.Color, bol
 	r.dc.DrawStringAnchored(s, x, y, hAlign, 0)
 }
 
+// fitText 在空间不足时缩小文字，避免长节日或天气描述溢出。
+func (r *renderer) fitText(x, y float64, text string, size, maxWidth float64, c color.Color, bold bool, align float64) {
+	for size > 14 {
+		r.dc.SetFontFace(r.face(size, bold))
+		width, _ := r.dc.MeasureString(text)
+		if width <= maxWidth {
+			break
+		}
+		size -= 1
+	}
+	r.text(x, y, text, size, c, bold, align)
+}
+
 // baselineFromTop 把「文字上沿 yTop」换算为「文字基线 y」（用于纵向堆叠排版）。
 func baselineFromTop(yTop, size float64) float64 {
 	return yTop + size*asc
@@ -300,8 +313,8 @@ func drawTopSection(r *renderer, data DashboardData) {
 	// 精确测量时间文字宽度，确保日期块不与时间重叠
 	r.dc.SetFontFace(r.face(timeSize, true))
 	timeW, _ := r.dc.MeasureString(data.TimeStr)
-	dateAreaLeft := left + timeW + 50 // 时间右缘 + 充足间距
-	dateAreaRight := right - 330 - 40 // 天气卡片左缘 - 间距
+	dateAreaLeft := left + timeW + 20 // 时间右缘 + 充足间距
+	dateAreaRight := right - 360 - 10 // 天气卡片左缘 - 间距
 	dateBlockCenter := (dateAreaLeft + dateAreaRight) / 2
 	// 日期拆成「年 / 月日 / 农历」三行，居中纵向堆叠并整体纵居中。
 	parts := strings.SplitN(data.DateStr, "年", 2)
@@ -315,7 +328,7 @@ func drawTopSection(r *renderer, data DashboardData) {
 	r.text(dateBlockCenter, baselineFromTop(bStart+dateSize+ddGap+dateSize+ddGap, lunarSize), lunarLine, lunarSize, color.RGBA{0x33, 0x33, 0x33, 0xff}, false, 0.5)
 
 	// ---- 右侧天气卡片（圆角 16，4px 黑边；温度/天气右对齐，南宁在卡片左侧空白区）----
-	cardW := 330.0
+	cardW := 360.0
 	cardX := right - cardW
 	cardH := 220.0 // temp(90)+8+desc(34)+6+range(34)=172，+ 上下 padding；位置行单独居中
 	cardY := sectionTop + (sectionH-cardH)/2
@@ -325,41 +338,36 @@ func drawTopSection(r *renderer, data DashboardData) {
 	r.dc.DrawRoundedRectangle(cardX, cardY, cardW, cardH, 16)
 	r.dc.Stroke() // 白底已由画布背景保证
 
-	innerRight := cardX + cardW - 30 // 右边距 30
-	// 温度/天气/区间三行右对齐、整体在卡片内纵向居中（位置行单独居中，不计入此处）。
-	const (
-		tempSize    = 90.0
-		weatherSize = 34.0
-		rangeSize   = 34.0
-		gapTW       = 8.0 // 温度→天气
-		gapWR       = 6.0 // 天气→区间
-	)
-	contH := tempSize + gapTW + weatherSize + gapWR + rangeSize
-	cy := cardY + (cardH-contH)/2 // 三行内容块上沿（纵向居中）
-
-	tb := baselineFromTop(cy, tempSize)
+	innerRight := cardX + cardW - 20
+	r.text(cardX+20, cardY+38, data.Location, 30, color.Black, true, 0)
 	tempText := "--°C"
 	if data.WeatherAvailable {
 		tempText = fmt.Sprintf("%.0f°C", data.Temp)
 	}
-	r.text(innerRight, tb, tempText, tempSize, color.Black, true, 1)
-
-	db2 := baselineFromTop(cy+tempSize+gapTW, weatherSize)
-	r.text(innerRight, db2, data.WeatherText, weatherSize, color.Black, true, 1)
-
-	rb := baselineFromTop(cy+tempSize+gapTW+weatherSize+gapWR, rangeSize)
-	rangeText := "--°C ~ --°C"
-	if data.WeatherAvailable {
-		rangeText = fmt.Sprintf("%.0f°C ~ %.0f°C", data.LowTemp, data.HighTemp)
+	r.text(innerRight, cardY+75, tempText, 68, color.Black, true, 1)
+	forecastText := "今日 " + data.WeatherText
+	if !data.WeatherAvailable {
+		forecastText = "天气暂不可用"
 	}
-	r.text(innerRight, rb, rangeText,
-		rangeSize, color.RGBA{0x44, 0x44, 0x44, 0xff}, false, 1)
-
-	// 位置：显示在温度卡片内左侧（填补左侧空白），纵向居中
-	locB := baselineFromTop(cardY+(cardH-34)/2, 34)
-	r.text(cardX+20, locB, data.Location, 34, color.RGBA{0x33, 0x33, 0x33, 0xff}, true, 0)
-
-	r.text(cardX+20, cardY+cardH-10, data.WeatherStatus, 14, color.RGBA{0x55, 0x55, 0x55, 0xff}, false, 0)
+	r.fitText(cardX+20, cardY+119, forecastText, 24, 150, color.Black, true, 0)
+	if data.WeatherAvailable {
+		r.text(innerRight, cardY+119, fmt.Sprintf("%.0f° ~ %.0f°", data.LowTemp, data.HighTemp), 24, color.Black, true, 1)
+	}
+	observation := "气温观测：--"
+	if !data.ObservedAt.IsZero() {
+		observation = "气温观测：" + data.ObservedAt.Format("01-02 15:04")
+	}
+	forecastTime := "预报发布：--"
+	if !data.ForecastAt.IsZero() {
+		forecastTime = "预报发布：" + data.ForecastAt.Format("01-02 15:04")
+	}
+	r.text(cardX+20, cardY+151, observation, 17, color.Black, false, 0)
+	r.text(cardX+20, cardY+176, forecastTime, 17, color.Black, false, 0)
+	status := "来源：中国天气网"
+	if data.WeatherStatus != "" {
+		status += "  " + data.WeatherStatus
+	}
+	r.fitText(cardX+20, cardY+204, status, 18, cardW-40, color.Black, data.WeatherStatus != "", 0)
 
 	// ---- 分割线（4px 黑线）----
 	r.dc.SetLineWidth(4)
@@ -416,7 +424,7 @@ func drawForecast(r *renderer, data DashboardData, baseDate time.Time) {
 		r.text(centerX, baselineFromTop(y, 18), dateStr, 18, textColor, false, 0.5)
 		y += 18 + 10
 		// 用 WeatherText（中文天气现象）替代 HTML 中的 emoji 图标，保证字体可渲染。
-		r.text(centerX, baselineFromTop(y, 34), f.WeatherText, 34, textColor, false, 0.5)
+		r.fitText(centerX, baselineFromTop(y, 34), f.WeatherText, 34, cardW-16, textColor, false, 0.5)
 		y += 34 + 10
 		r.text(centerX, baselineFromTop(y, 22),
 			fmt.Sprintf("%d°/%d°", f.HighTemp, f.LowTemp), 22, textColor, true, 0.5)
@@ -461,33 +469,7 @@ func drawCalendar(r *renderer, data DashboardData, baseDate time.Time) {
 
 	for row := 0; row < 6; row++ {
 		for c := 0; c < 7; c++ {
-			// 显示列 c（周一为首）映射到数据列。
-			// 数据网格以周日为首（col 0 = 周日），UI 以周一为首（col 0 = 周一）。
-			//   周一~周六（c=0~5）→ 取同行数据列 c+1；
-			//   周日（c=6）      → 取下一行数据列 0（下一周的周日），
-			//     否则周日会显示成"本周起始周日"而非"本周结束周日"，导致 8 号后面出现 2 号。
-			var cell CalendarCell
-			if c < 6 {
-				cell = data.Calendar[row][c+1]
-			} else if row+1 < 6 {
-				cell = data.Calendar[row+1][0]
-			} else {
-				// 最后一行(行5)周日(列6)：数据越界([6][7] 只有 42 天，index 0~41)。
-				// 从 gridStart 推算第 42 天（0-based index 42 = 第 43 天），填充正确日期与农历。
-				year, month, _ := baseDate.Date()
-				loc := baseDate.Location()
-				firstOfMonth := time.Date(year, month, 1, 0, 0, 0, 0, loc)
-				startOffset := int(firstOfMonth.Weekday())
-				gridStart := firstOfMonth.AddDate(0, 0, -startOffset)
-				actualDay := gridStart.AddDate(0, 0, 42)
-				cell = CalendarCell{
-					Day:            actualDay.Day(),
-					Lunar:          lunarDay(actualDay.Year(), int(actualDay.Month()), actualDay.Day()),
-					IsCurrentMonth: actualDay.Month() == month,
-					IsToday:        false,
-				}
-			}
-			// 最后一行的周日格留空（已是月末）
+			cell := data.Calendar[row][c]
 			x := left + float64(c)*colW
 			y := gridTop + float64(row)*rowH
 
@@ -499,10 +481,10 @@ func drawCalendar(r *renderer, data DashboardData, baseDate time.Time) {
 			} else {
 				r.dc.SetLineWidth(1)
 				if cell.IsCurrentMonth {
-					r.dc.SetColor(color.RGBA{0xd0, 0xd0, 0xd0, 0xff})
+					r.dc.SetColor(color.RGBA{0x99, 0x99, 0x99, 0xff})
 					r.dc.SetDash() // 实线
 				} else {
-					r.dc.SetColor(color.RGBA{0xc0, 0xc0, 0xc0, 0xff})
+					r.dc.SetColor(color.RGBA{0x99, 0x99, 0x99, 0xff})
 					r.dc.SetDash(4, 4) // 虚线
 				}
 				r.dc.DrawRectangle(x, y, colW, rowH)
@@ -517,8 +499,8 @@ func drawCalendar(r *renderer, data DashboardData, baseDate time.Time) {
 				numColor = color.White
 				lunarColor = color.RGBA{0xdd, 0xdd, 0xdd, 0xff}
 			case !cell.IsCurrentMonth:
-				numColor = color.RGBA{0x99, 0x99, 0x99, 0xff}
-				lunarColor = color.RGBA{0xaa, 0xaa, 0xaa, 0xff}
+				numColor = color.RGBA{0x66, 0x66, 0x66, 0xff}
+				lunarColor = color.RGBA{0x66, 0x66, 0x66, 0xff}
 			default:
 				numColor = color.Black
 				lunarColor = color.RGBA{0x55, 0x55, 0x55, 0xff}
@@ -529,7 +511,7 @@ func drawCalendar(r *renderer, data DashboardData, baseDate time.Time) {
 			total := numH + g + lunarH
 			cy0 := y + (rowH-total)/2 // 两行整体居中
 			r.text(cx, baselineFromTop(cy0, numH), strconv.Itoa(cell.Day), numH, numColor, true, 0.5)
-			r.text(cx, baselineFromTop(cy0+numH+g, lunarH), cell.Lunar, lunarH, lunarColor, false, 0.5)
+			r.fitText(cx, baselineFromTop(cy0+numH+g, lunarH), cell.Lunar, lunarH, colW-12, lunarColor, false, 0.5)
 		}
 	}
 }
