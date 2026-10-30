@@ -3,13 +3,15 @@
 // 平台：Linux x86_64 (Alpine LXC)，面向 Kindle 等墨水屏设备。
 // 职责：HTTP 路由监听、数据结构体定义、系统时间获取与数据 Mock。
 // 注意：本文件【不包含】任何 2D 画布绘制代码，绘制由同 package 下的
-//       render.go 中的 RenderDashboard(data DashboardData) ([]byte, error) 实现。
+//
+//	render.go 中的 RenderDashboard(data DashboardData) ([]byte, error) 实现。
 package main
 
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	xdraw "golang.org/x/image/draw"
 	"image"
 	"image/draw"
 	"image/png"
@@ -19,7 +21,6 @@ import (
 	"os"
 	"strconv"
 	"time"
-	xdraw "golang.org/x/image/draw"
 
 	"github.com/6tail/lunar-go/calendar"
 )
@@ -30,28 +31,30 @@ import (
 
 // ForecastItem 表示 5 日预报中的单日条目。
 type ForecastItem struct {
-	Weekday     string  `json:"weekday"`      // 星期，如 "周一"
-	WeatherText string  `json:"weather_text"` // 天气现象/图标文本，如 "多云"
-	HighTemp    int     `json:"high_temp"`    // 当日最高温（℃）
-	LowTemp     int     `json:"low_temp"`     // 当日最低温（℃）
-	IsToday     bool    `json:"is_today"`     // 是否为今天
+	Weekday     string `json:"weekday"`      // 星期，如 "周一"
+	WeatherText string `json:"weather_text"` // 天气现象/图标文本，如 "多云"
+	HighTemp    int    `json:"high_temp"`    // 当日最高温（℃）
+	LowTemp     int    `json:"low_temp"`     // 当日最低温（℃）
+	IsToday     bool   `json:"is_today"`     // 是否为今天
 }
 
 // CalendarCell 表示月历网格中的单个单元格（7 列 × 6 行中的一个）。
 type CalendarCell struct {
-	Day            int    `json:"day"`             // 阳历日期，如 3
-	Lunar          string `json:"lunar"`           // 农历日期，如 "廿一"（待接入真实农历）
+	Day            int    `json:"day"`              // 阳历日期，如 3
+	Lunar          string `json:"lunar"`            // 农历日期，如 "廿一"（待接入真实农历）
 	IsCurrentMonth bool   `json:"is_current_month"` // 是否属于当前展示的月份
-	IsToday        bool   `json:"is_today"`        // 是否为今天
+	IsToday        bool   `json:"is_today"`         // 是否为今天
 }
 
 // DashboardData 是所有看板数据的聚合根，作为 RenderDashboard 的输入。
 type DashboardData struct {
 	// 时间与日期
-	TimeStr  string `json:"time_str"`  // 当前时间，如 "10:43"
-	DateStr  string `json:"date_str"`  // 当前日期，如 "2026年08月03日"
-	LunarStr string `json:"lunar_str"` // 农历/节气，如 "六月廿一"
-	Location string `json:"location"`  // 城市名，如 "南宁"（图上展示用）
+	TimeStr          string `json:"time_str"`  // 当前时间，如 "10:43"
+	DateStr          string `json:"date_str"`  // 当前日期，如 "2026年08月03日"
+	LunarStr         string `json:"lunar_str"` // 农历/节气，如 "六月廿一"
+	WeatherStatus    string `json:"weather_status"`
+	WeatherAvailable bool   `json:"weather_available"`
+	Location         string `json:"location"` // 城市名，如 "南宁"（图上展示用）
 
 	// 实时天气
 	Temp        float64 `json:"temp"`         // 实时温度（℃）
@@ -89,6 +92,7 @@ var weekdayNames = []string{"周日", "周一", "周二", "周三", "周四", "�
 // 注意：经纬度不在此处配置——它们由代码按 CityName 查 cityCoords 表得到；
 // 配置文件只需写 port、city_name 与 timezone_offset 三个字段（后两者有合理默认）。
 type serverConfig struct {
+	CityID         string `json:"city_id"`
 	Port           int    `json:"port"`            // 监听端口（默认 8080）
 	CityName       string `json:"city_name"`       // 图上展示的城市名（默认 南宁）；经纬度按表查得
 	TimezoneOffset int    `json:"timezone_offset"` // 相对 UTC 的小时偏移（默认 8，即中国 UTC+8）；决定看板显示时间，不依赖宿主时区
@@ -112,50 +116,50 @@ func defaultConfig() serverConfig {
 // cityCoords 内置「城市名 → 经纬度」查表，避免用户在配置文件中手写经纬度。
 // 未收录的城市将回退到默认值（南宁）。如需新增城市，在此追加一行即可。
 var cityCoords = map[string][2]float64{
-	"南宁":     {22.82, 108.37},
-	"北京":     {39.90, 116.40},
-	"上海":     {31.23, 121.47},
-	"广州":     {23.13, 113.26},
-	"深圳":     {22.54, 114.06},
-	"杭州":     {30.27, 120.15},
-	"成都":     {30.57, 104.07},
-	"武汉":     {30.59, 114.31},
-	"西安":     {34.34, 108.94},
-	"重庆":     {29.56, 106.55},
-	"南京":     {32.06, 118.80},
-	"天津":     {39.13, 117.20},
-	"苏州":     {31.30, 120.62},
-	"长沙":     {28.23, 112.94},
-	"沈阳":     {41.80, 123.43},
-	"青岛":     {36.07, 120.38},
-	"郑州":     {34.75, 113.62},
-	"大连":     {38.91, 121.61},
-	"厦门":     {24.48, 118.09},
-	"昆明":     {25.04, 102.71},
-	"哈尔滨":   {45.80, 126.53},
-	"济南":     {36.65, 117.00},
-	"福州":     {26.07, 119.30},
-	"贵阳":     {26.65, 106.63},
-	"太原":     {37.87, 112.55},
-	"兰州":     {36.06, 103.83},
-	"海口":     {20.04, 110.20},
-	"拉萨":     {29.65, 91.13},
+	"南宁":   {22.82, 108.37},
+	"北京":   {39.90, 116.40},
+	"上海":   {31.23, 121.47},
+	"广州":   {23.13, 113.26},
+	"深圳":   {22.54, 114.06},
+	"杭州":   {30.27, 120.15},
+	"成都":   {30.57, 104.07},
+	"武汉":   {30.59, 114.31},
+	"西安":   {34.34, 108.94},
+	"重庆":   {29.56, 106.55},
+	"南京":   {32.06, 118.80},
+	"天津":   {39.13, 117.20},
+	"苏州":   {31.30, 120.62},
+	"长沙":   {28.23, 112.94},
+	"沈阳":   {41.80, 123.43},
+	"青岛":   {36.07, 120.38},
+	"郑州":   {34.75, 113.62},
+	"大连":   {38.91, 121.61},
+	"厦门":   {24.48, 118.09},
+	"昆明":   {25.04, 102.71},
+	"哈尔滨":  {45.80, 126.53},
+	"济南":   {36.65, 117.00},
+	"福州":   {26.07, 119.30},
+	"贵阳":   {26.65, 106.63},
+	"太原":   {37.87, 112.55},
+	"兰州":   {36.06, 103.83},
+	"海口":   {20.04, 110.20},
+	"拉萨":   {29.65, 91.13},
 	"乌鲁木齐": {43.83, 87.62},
 	"呼和浩特": {40.84, 111.75},
-	"银川":     {38.49, 106.23},
-	"西宁":     {36.62, 101.78},
-	"石家庄":   {38.04, 114.51},
-	"南昌":     {28.68, 115.86},
-	"合肥":     {31.82, 117.23},
-	"宁波":     {29.87, 121.55},
-	"无锡":     {31.49, 120.31},
-	"常州":     {31.81, 119.97},
-	"东莞":     {23.02, 113.75},
-	"佛山":     {23.02, 113.12},
-	"珠海":     {22.27, 113.58},
-	"香港":     {22.32, 114.17},
-	"澳门":     {22.20, 113.54},
-	"台北":     {25.03, 121.57},
+	"银川":   {38.49, 106.23},
+	"西宁":   {36.62, 101.78},
+	"石家庄":  {38.04, 114.51},
+	"南昌":   {28.68, 115.86},
+	"合肥":   {31.82, 117.23},
+	"宁波":   {29.87, 121.55},
+	"无锡":   {31.49, 120.31},
+	"常州":   {31.81, 119.97},
+	"东莞":   {23.02, 113.75},
+	"佛山":   {23.02, 113.12},
+	"珠海":   {22.27, 113.58},
+	"香港":   {22.32, 114.17},
+	"澳门":   {22.20, 113.54},
+	"台北":   {25.03, 121.57},
 }
 
 // resolveCityCoords 按城市名查表返回经纬度（lat, lon）。
@@ -194,131 +198,6 @@ func loadConfig() serverConfig {
 	return c
 }
 
-// wmoToText 将 WMO weather_code 映射为中文天气现象。
-// 参考：https://open-meteo.com/en/docs 的 weather_code 说明。
-func wmoToText(code int) string {
-	switch code {
-	case 0:
-		return "晴"
-	case 1:
-		return "晴间多云"
-	case 2:
-		return "多云"
-	case 3:
-		return "阴"
-	case 45, 48:
-		return "雾"
-	case 51, 53, 55:
-		return "细雨"
-	case 56, 57:
-		return "冻雨"
-	case 61:
-		return "小雨"
-	case 63:
-		return "中雨"
-	case 65:
-		return "大雨"
-	case 66, 67:
-		return "冻雨"
-	case 71, 73, 75:
-		return "雪"
-	case 77:
-		return "雪粒"
-	case 80, 81, 82:
-		return "阵雨"
-	case 85, 86:
-		return "阵雪"
-	case 95:
-		return "雷阵雨"
-	case 96, 99:
-		return "雷阵雨伴冰雹"
-	default:
-		return "未知"
-	}
-}
-
-// weatherResult 聚合一次天气拉取的结果。
-type weatherResult struct {
-	temp        float64
-	weatherText string
-	highTemp    float64
-	lowTemp     float64
-	forecast    []ForecastItem
-}
-
-// fetchWeather 从 Open-Meteo（免 key、免费）拉取实时天气与 7 日预报。
-// 成功返回 (结果, true)；网络/解析失败时返回 (空, false)，调用方回退到 Mock。
-func fetchWeather() (weatherResult, bool) {
-	lat, lon, _ := resolveCityCoords(cfg.CityName)
-	url := fmt.Sprintf(
-		"https://api.open-meteo.com/v1/forecast?latitude=%.2f&longitude=%.2f"+
-			"&current=temperature_2m,weather_code"+
-			"&daily=weather_code,temperature_2m_max,temperature_2m_min"+
-			"&timezone=Asia%%2FShanghai&forecast_days=7",
-		lat, lon,
-	)
-	resp, err := http.Get(url)
-	if err != nil {
-		log.Printf("天气获取失败（网络）: %v", err)
-		return weatherResult{}, false
-	}
-	defer resp.Body.Close()
-
-	var w struct {
-		Current struct {
-			Temperature2m float64 `json:"temperature_2m"`
-			WeatherCode   int     `json:"weather_code"`
-		} `json:"current"`
-		Daily struct {
-			Time             []string  `json:"time"`
-			WeatherCode      []int     `json:"weather_code"`
-			Temperature2mMax []float64 `json:"temperature_2m_max"`
-			Temperature2mMin []float64 `json:"temperature_2m_min"`
-		} `json:"daily"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&w); err != nil {
-		log.Printf("天气解析失败: %v", err)
-		return weatherResult{}, false
-	}
-
-	res := weatherResult{
-		temp:        w.Current.Temperature2m,
-		weatherText: wmoToText(w.Current.WeatherCode),
-	}
-	if len(w.Daily.Temperature2mMax) > 0 {
-		res.highTemp = w.Daily.Temperature2mMax[0]
-	}
-	if len(w.Daily.Temperature2mMin) > 0 {
-		res.lowTemp = w.Daily.Temperature2mMin[0]
-	}
-	for i := 0; i < len(w.Daily.Time) && i < 5; i++ {
-		res.forecast = append(res.forecast, ForecastItem{
-			WeatherText: wmoToText(w.Daily.WeatherCode[i]),
-			HighTemp:    int(w.Daily.Temperature2mMax[i] + 0.5),
-			LowTemp:     int(w.Daily.Temperature2mMin[i] + 0.5),
-			IsToday:     i == 0,
-		})
-	}
-	return res, true
-}
-
-// mockWeather 天气拉取失败时的兜底数据，保证看板始终可渲染。
-func mockWeather() weatherResult {
-	return weatherResult{
-		temp:        26.5,
-		weatherText: "多云",
-		highTemp:    31,
-		lowTemp:     23,
-		forecast: []ForecastItem{
-			{WeatherText: "多云", HighTemp: 31, LowTemp: 23, IsToday: true},
-			{WeatherText: "晴", HighTemp: 33, LowTemp: 24},
-			{WeatherText: "小雨", HighTemp: 29, LowTemp: 22},
-			{WeatherText: "阴", HighTemp: 30, LowTemp: 21},
-			{WeatherText: "雷阵雨", HighTemp: 28, LowTemp: 20},
-		},
-	}
-}
-
 // fetchDashboardData 实时获取系统时间、真实天气与农历，并组装看板数据。
 func fetchDashboardData() DashboardData {
 	// 以配置时区（默认 UTC+8）为准取当前时刻，不依赖宿主系统时区设置。
@@ -329,17 +208,16 @@ func fetchDashboardData() DashboardData {
 	dateStr := now.Format("2006年1月2日") // 不补零，便于顶部拆成「年/月日/农历」三行
 
 	// 天气：优先真实拉取，失败回退 Mock。
-	w, ok := fetchWeather()
-	if !ok {
-		w = mockWeather()
-	}
+	w, status, ok := cachedWeather(now)
 
 	return DashboardData{
 		// --- 时间相关 ---
-		TimeStr:  timeStr,
-		DateStr:  dateStr,
-		LunarStr: lunarMonthDay(now.Year(), int(now.Month()), now.Day()), // 真实农历（月+日）
-		Location: cfg.CityName,
+		TimeStr:          timeStr,
+		DateStr:          dateStr,
+		LunarStr:         lunarMonthDay(now.Year(), int(now.Month()), now.Day()), // 真实农历（月+日）
+		Location:         cfg.CityName,
+		WeatherStatus:    status,
+		WeatherAvailable: ok,
 
 		// --- 实时天气（Open-Meteo 真实数据，失败回退 Mock）---
 		Temp:        w.temp,

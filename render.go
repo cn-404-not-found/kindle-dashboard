@@ -2,18 +2,20 @@
 //
 // 平台：Kindle Paperwhite 3（物理分辨率 1072 × 1448，纯黑白墨水屏）。
 // 职责：接收 main.go 中定义的 DashboardData，使用 github.com/fogleman/gg
-//       在纯白画布上绘制「时间/天气 / 5 日预报 / 整月日历」三区布局，
-//       最终以 image/png 编码返回 PNG 字节流。
+//
+//	在纯白画布上绘制「时间/天气 / 5 日预报 / 整月日历」三区布局，
+//	最终以 image/png 编码返回 PNG 字节流。
 //
 // 布局严格翻译自项目提供的 HTML/CSS 源码（body 1072×1448，padding 50/45）：
-//   1. 顶部核心区：大号时间 + 公历/农历日期（左），圆角天气卡片（右），下方分割线。
-//   2. 中部 5 日预报：横向 5 列卡片，IsToday 反色（黑底白字），其余白底黑框。
-//   3. 下部月历：7 列 × 6 行网格，非本月浅灰虚线淡字，IsToday 黑底白字高亮。
+//  1. 顶部核心区：大号时间 + 公历/农历日期（左），圆角天气卡片（右），下方分割线。
+//  2. 中部 5 日预报：横向 5 列卡片，IsToday 反色（黑底白字），其余白底黑框。
+//  3. 下部月历：7 列 × 6 行网格，非本月浅灰虚线淡字，IsToday 黑底白字高亮。
 //
 // 字体：更纱黑体（Sarasa Gothic，TTC 合集）。
-//   默认只需 1 个常规字重文件 sarasa.ttc（取内部简体 Mono 子变体），放在可执行文件同目录即可。
-//   粗体默认用「极小偏移重复填充」模拟；若同目录另有 sarasa-bold.ttc，则改用真实 Bold 字重（更锐利）。
-//   （更纱官方 TTC 按字重拆文件、且每个文件内含 SC/TC/J/K/HC 全正字法 + 多风格子变体，selectSC 负责挑简体。）
+//
+//	默认只需 1 个常规字重文件 sarasa.ttc（取内部简体 Mono 子变体），放在可执行文件同目录即可。
+//	粗体默认用「极小偏移重复填充」模拟；若同目录另有 sarasa-bold.ttc，则改用真实 Bold 字重（更锐利）。
+//	（更纱官方 TTC 按字重拆文件、且每个文件内含 SC/TC/J/K/HC 全正字法 + 多风格子变体，selectSC 负责挑简体。）
 package main
 
 import (
@@ -44,7 +46,7 @@ const (
 
 	fontFile     = "Sarasa-Regular.ttc" // 默认字体（常规字重；更纱官方 TTC 包内文件名，无需改名）
 	boldFontFile = "Sarasa-Bold.ttc"    // 可选：存在则用真实 Bold 字重，否则回退偏移模拟
-	fontStyle    = "Mono"           // 首选子变体：Mono(等宽数字)/Gothic/Term/Fixed/UI；""=任意简体(SC)
+	fontStyle    = "Mono"               // 首选子变体：Mono(等宽数字)/Gothic/Term/Fixed/UI；""=任意简体(SC)
 
 	asc = 0.86 // CJK 字形近似 ascent 比例，用于将「顶对齐」换算为基线 y
 )
@@ -222,6 +224,7 @@ func RenderDashboard(data DashboardData) ([]byte, error) {
 //  2. 可执行文件同目录下的 fonts/ 子目录
 //  3. 进程工作目录
 //  4. 工作目录下的 fonts/ 子目录
+//
 // 任一命中即返回；全未命中则回退为 name 本身（交由后续 os.Open 报错）。
 func resolveFontPath(name string) string {
 	candidates := []string{}
@@ -279,8 +282,8 @@ func parseDate(s string) time.Time {
 func drawTopSection(r *renderer, data DashboardData) {
 	left := padX
 	right := canvasW - padX
-	sectionTop := padY        // 50
-	sectionH := 250.0         // CSS .top-section height
+	sectionTop := padY                     // 50
+	sectionH := 250.0                      // CSS .top-section height
 	sectionBottom := sectionTop + sectionH // 300
 
 	// ---- 左侧：大号时间（纵居中）----
@@ -303,7 +306,7 @@ func drawTopSection(r *renderer, data DashboardData) {
 	// 日期拆成「年 / 月日 / 农历」三行，居中纵向堆叠并整体纵居中。
 	parts := strings.SplitN(data.DateStr, "年", 2)
 	yearLine := parts[0] + "年" // "2026年"
-	mdLine := parts[1]          // "8月3日"
+	mdLine := parts[1]         // "8月3日"
 	lunarLine := "农历 " + data.LunarStr
 	blockH := dateSize + ddGap + dateSize + ddGap + lunarSize
 	bStart := sectionTop + (sectionH-blockH)/2
@@ -335,18 +338,28 @@ func drawTopSection(r *renderer, data DashboardData) {
 	cy := cardY + (cardH-contH)/2 // 三行内容块上沿（纵向居中）
 
 	tb := baselineFromTop(cy, tempSize)
-	r.text(innerRight, tb, fmt.Sprintf("%.0f°C", data.Temp), tempSize, color.Black, true, 1)
+	tempText := "--°C"
+	if data.WeatherAvailable {
+		tempText = fmt.Sprintf("%.0f°C", data.Temp)
+	}
+	r.text(innerRight, tb, tempText, tempSize, color.Black, true, 1)
 
 	db2 := baselineFromTop(cy+tempSize+gapTW, weatherSize)
 	r.text(innerRight, db2, data.WeatherText, weatherSize, color.Black, true, 1)
 
 	rb := baselineFromTop(cy+tempSize+gapTW+weatherSize+gapWR, rangeSize)
-	r.text(innerRight, rb, fmt.Sprintf("%.0f°C ~ %.0f°C", data.LowTemp, data.HighTemp),
+	rangeText := "--°C ~ --°C"
+	if data.WeatherAvailable {
+		rangeText = fmt.Sprintf("%.0f°C ~ %.0f°C", data.LowTemp, data.HighTemp)
+	}
+	r.text(innerRight, rb, rangeText,
 		rangeSize, color.RGBA{0x44, 0x44, 0x44, 0xff}, false, 1)
 
 	// 位置：显示在温度卡片内左侧（填补左侧空白），纵向居中
 	locB := baselineFromTop(cardY+(cardH-34)/2, 34)
 	r.text(cardX+20, locB, data.Location, 34, color.RGBA{0x33, 0x33, 0x33, 0xff}, true, 0)
+
+	r.text(cardX+20, cardY+cardH-10, data.WeatherStatus, 14, color.RGBA{0x55, 0x55, 0x55, 0xff}, false, 0)
 
 	// ---- 分割线（4px 黑线）----
 	r.dc.SetLineWidth(4)
