@@ -339,24 +339,24 @@ func drawTopSection(r *renderer, data DashboardData) {
 	r.dc.Stroke() // 白底已由画布背景保证
 
 	// 城市与天气各占一栏，天气内容按温度、温区和预报纵向排列。
-	cityCenter := cardX + 76
-	weatherCenter := cardX + 270
+	cityCenter := cardX + 90
+	weatherCenter := cardX + 250
 	r.fitText(cityCenter, cardY+128, data.Location, 57, 135, color.Black, true, 0.5)
 	tempText := "--°"
 	if data.WeatherAvailable {
 		tempText = fmt.Sprintf("%.0f°", data.Temp)
 	}
-	r.fitText(weatherCenter, cardY+73, tempText, 70, 170, color.Black, true, 0.5)
+	r.fitText(weatherCenter, cardY+83, tempText, 70, 170, color.Black, true, 0.5)
 	rangeText := "--° ~ --°"
 	if data.WeatherAvailable {
 		rangeText = fmt.Sprintf("%.0f° ~ %.0f°", data.LowTemp, data.HighTemp)
 	}
-	r.fitText(weatherCenter, cardY+115, rangeText, 30, 170, color.Black, true, 0.5)
+	r.fitText(weatherCenter, cardY+125, rangeText, 30, 170, color.Black, true, 0.5)
 	forecastText := "今日 " + data.WeatherText
 	if !data.WeatherAvailable {
 		forecastText = "天气暂不可用"
 	}
-	r.fitText(weatherCenter, cardY+174, forecastText, 30, 170, color.Black, true, 0.5)
+	r.fitText(weatherCenter, cardY+184, forecastText, 30, 170, color.Black, true, 0.5)
 	if data.WeatherStatus != "" {
 		r.fitText(cityCenter, cardY+192, data.WeatherStatus, 16, 125, color.Black, true, 0.5)
 	}
