@@ -338,36 +338,28 @@ func drawTopSection(r *renderer, data DashboardData) {
 	r.dc.DrawRoundedRectangle(cardX, cardY, cardW, cardH, 16)
 	r.dc.Stroke() // 白底已由画布背景保证
 
-	innerRight := cardX + cardW - 20
-	r.text(cardX+20, cardY+38, data.Location, 30, color.Black, true, 0)
-	tempText := "--°C"
+	// 城市与天气各占一栏，天气内容按温度、温区和预报纵向排列。
+	cityCenter := cardX + 76
+	weatherCenter := cardX + 255
+	r.fitText(cityCenter, cardY+128, data.Location, 48, 125, color.Black, true, 0.5)
+	tempText := "--°"
 	if data.WeatherAvailable {
-		tempText = fmt.Sprintf("%.0f°C", data.Temp)
+		tempText = fmt.Sprintf("%.0f°", data.Temp)
 	}
-	r.text(innerRight, cardY+75, tempText, 68, color.Black, true, 1)
+	r.fitText(weatherCenter, cardY+73, tempText, 70, 180, color.Black, true, 0.5)
+	rangeText := "--° ~ --°"
+	if data.WeatherAvailable {
+		rangeText = fmt.Sprintf("%.0f° ~ %.0f°", data.LowTemp, data.HighTemp)
+	}
+	r.fitText(weatherCenter, cardY+115, rangeText, 25, 180, color.Black, true, 0.5)
 	forecastText := "今日 " + data.WeatherText
 	if !data.WeatherAvailable {
 		forecastText = "天气暂不可用"
 	}
-	r.fitText(cardX+20, cardY+119, forecastText, 24, 150, color.Black, true, 0)
-	if data.WeatherAvailable {
-		r.text(innerRight, cardY+119, fmt.Sprintf("%.0f° ~ %.0f°", data.LowTemp, data.HighTemp), 24, color.Black, true, 1)
-	}
-	observation := "气温观测：--"
-	if !data.ObservedAt.IsZero() {
-		observation = "气温观测：" + data.ObservedAt.Format("01-02 15:04")
-	}
-	forecastTime := "预报发布：--"
-	if !data.ForecastAt.IsZero() {
-		forecastTime = "预报发布：" + data.ForecastAt.Format("01-02 15:04")
-	}
-	r.text(cardX+20, cardY+151, observation, 17, color.Black, false, 0)
-	r.text(cardX+20, cardY+176, forecastTime, 17, color.Black, false, 0)
-	status := "来源：中国天气网"
+	r.fitText(weatherCenter, cardY+174, forecastText, 30, 180, color.Black, true, 0.5)
 	if data.WeatherStatus != "" {
-		status += "  " + data.WeatherStatus
+		r.fitText(cityCenter, cardY+192, data.WeatherStatus, 16, 125, color.Black, true, 0.5)
 	}
-	r.fitText(cardX+20, cardY+204, status, 18, cardW-40, color.Black, data.WeatherStatus != "", 0)
 
 	// ---- 分割线（4px 黑线）----
 	r.dc.SetLineWidth(4)
