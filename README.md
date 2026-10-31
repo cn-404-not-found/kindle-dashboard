@@ -19,7 +19,7 @@
 
 服务端需要能访问天气来源，Kindle 需要能访问服务端。程序运行时不依赖 AI 或数据库。天气抓取结果缓存 30 分钟；获取失败时会尝试使用缓存或显示不可用，公开网页的结构或访问规则变化可能影响数据获取。
 
-## Docker 部署
+## 安装与部署（Docker）
 
 GitHub Actions 构建并发布 `linux/amd64` 和 `linux/arm64` 镜像：
 
@@ -27,15 +27,18 @@ GitHub Actions 构建并发布 `linux/amd64` 和 `linux/arm64` 镜像：
 ghcr.io/cn-404-not-found/kindle-dashboard:latest
 ```
 
-从本仓库获取 `compose.yaml` 和 `.env.example`，在安装 Docker Compose 的服务器上执行：
+镜像包含程序和字体，目标机器不需要安装 Go。以下命令适用于已经安装 Docker、Docker Compose 和 `curl` 的 Linux 服务器。Docker 安装方法请参考 [Docker 官方安装指南](https://docs.docker.com/engine/install/)。
+
+### 1. 准备配置文件
 
 ```sh
-cp .env.example .env
-docker compose pull
-docker compose up -d
+mkdir -p kindle-dashboard
+cd kindle-dashboard
+curl -fsSL -o compose.yaml https://raw.githubusercontent.com/cn-404-not-found/kindle-dashboard/main/compose.yaml
+curl -fsSL -o .env https://raw.githubusercontent.com/cn-404-not-found/kindle-dashboard/main/.env.example
 ```
 
-在 `.env` 中配置：
+根据需要修改 `.env`：
 
 ```dotenv
 HOST_PORT=8080
@@ -44,12 +47,34 @@ CITY_ID=
 TIMEZONE_OFFSET=8
 ```
 
-- `HOST_PORT` 是宿主机端口，容器内固定监听 `8080`。
-- `CITY_NAME` 是显示的城市名；内置城市列表见 [`weather.go`](weather.go)。
-- `CITY_ID` 可在使用内置城市时留空；其他城市需要填入中国天气网的 9 位城市代码。
-- `TIMEZONE_OFFSET` 是相对 UTC 的整小时固定偏移，中国为 `8`；不会自动处理夏令时。
+- `HOST_PORT`：服务器对外端口，容器内固定为 `8080`。
+- `CITY_NAME`：看板显示的城市；内置城市见 [`weather.go`](weather.go) 中的 `weatherCityIDs`。
+- `CITY_ID`：中国天气网 9 位城市代码。使用内置城市时可留空；其他城市需要填写。
+- `TIMEZONE_OFFSET`：相对 UTC 的整小时固定偏移，中国为 `8`；不自动处理夏令时。
 
-修改 `.env` 后执行 `docker compose up -d` 重新创建容器。打开 `http://服务器IP:8080/screen.png` 查看图片；若更改了 `HOST_PORT`，使用对应端口。配置和完整说明见 [DOCKER.md](DOCKER.md)。如果镜像包设为私有，拉取前需要用有包读取权限的 GitHub 账号登录 `ghcr.io`。
+### 2. 登录并启动
+
+**镜像包目前为私有，无法匿名拉取**。先在 GitHub 创建有 `read:packages` 权限的 classic personal access token，并确保该账号可访问镜像包；按提示输入令牌，不要把令牌写入 `.env` 或命令历史。登录说明参见 [GitHub 容器仓库文档](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#authenticating-with-a-personal-access-token-classic)。
+
+```sh
+docker login ghcr.io -u 你的GitHub用户名
+docker compose pull
+docker compose up -d
+```
+
+用浏览器打开 `http://服务器IP:8080/screen.png` 查看。如果修改了 `HOST_PORT`，请使用对应端口；服务器防火墙需允许 Kindle 访问该端口，服务端也需要能够访问中国天气网。
+
+### 3. 查看、更新和停止
+
+```sh
+docker compose ps           # 查看状态
+docker compose logs -f      # 查看日志，按 Ctrl+C 退出
+docker compose pull         # 下载最新版镜像
+docker compose up -d        # 使用最新镜像或应用新的 .env
+docker compose down         # 停止并移除容器
+```
+
+修改 `.env` 后执行 `docker compose up -d`，单独执行 `docker compose restart` 不会重新读取环境变量。更多说明见 [DOCKER.md](DOCKER.md)。在 Kindle 的 **Set server address** 中填写 `服务器IP:端口`。
 
 ## Kindle 客户端
 

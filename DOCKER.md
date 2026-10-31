@@ -1,6 +1,6 @@
 # Docker 部署
 
-GitHub Actions 在 `main` 更新后自动构建并发布 `ghcr.io/cn-404-not-found/kindle-dashboard:latest`（linux/amd64 和 linux/arm64）。仓库为私有仓库，镜像通常也是私有的，需要有包读取权限的 GitHub 账号登录 GHCR。首次发布结果以 GitHub Actions 状态为准。
+GitHub Actions 在 `main` 更新后自动构建并发布 `ghcr.io/cn-404-not-found/kindle-dashboard:latest`（linux/amd64 和 linux/arm64）。仓库已公开，但镜像包目前为私有，需要有包读取权限的 GitHub 账号登录 GHCR。
 
 镜像包含字体和程序，部署机器不需要 Go 或字体文件。仅需下载本仓库中的 `compose.yaml` 与 `.env.example`，把示例复制成 `.env`：
 
