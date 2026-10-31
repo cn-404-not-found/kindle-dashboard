@@ -61,6 +61,15 @@ if [ "${1:-}" = "--rollback" ]; then
     exit $?
 fi
 
+# /proc/mounts may list an overmounted rootfs before the real root filesystem.
+root_mount_mode() {
+    awk '$2 == "/" { options=$4 } END { n=split(options,a,","); for(i=1;i<=n;i++) { if(a[i]=="ro" || a[i]=="rw") {print a[i]; exit} } exit 1 }'
+}
+if [ "${1:-}" = "--root-mount-mode" ]; then
+    root_mount_mode
+    exit $?
+fi
+
 pause() { printf '\nPress Enter to continue... '; read -r answer; }
 get_field() {
     while :; do
@@ -149,6 +158,55 @@ apply_config() {
     fi
 
 }
+# Install one uniquely marked cron line; preserve all existing entries.
+install_watchdog() {
+    cron=/etc/crontab/root
+    marker='kindle-network-watchdog'
+    [ -f "$cron" ] || { echo 'Cron configuration not found.'; return 1; }
+    grep -Fq "$marker" "$cron" && return 0
+    root_mode=$(root_mount_mode < /proc/mounts)
+    case "$root_mode" in ro) was_ro=1 ;; rw) was_ro=0 ;; *) echo 'Cannot determine root mount mode.'; return 1 ;; esac
+    if [ "$was_ro" = 1 ]; then
+        mntroot rw || { echo 'Unable to remount root read-write.'; return 1; }
+        if [ "$(root_mount_mode < /proc/mounts)" != rw ]; then
+            mntroot ro
+            echo 'Root filesystem is still read-only.'; return 1
+        fi
+    fi
+    printf '\n* * * * * /bin/sh /mnt/us/extensions/kindle-network/auto.sh --ensure >/dev/null 2>&1 # kindle-network-watchdog\n' >> "$cron"
+    result=$?
+    if [ "$was_ro" = 1 ]; then mntroot ro || { echo 'Could not restore root read-only mode.'; return 1; }; fi
+    [ "$result" -eq 0 ] || { echo 'Could not install startup entry.'; return 1; }
+    kill -HUP "$(pidof crond)" 2>/dev/null || echo 'Cron reload failed; restart may be required.'
+}
+static_mode() {
+    load_config || return 1
+    status=$(wpa_cli -i wlan0 status 2>/dev/null)
+    printf '%s\n' "$status" | grep -q '^wpa_state=COMPLETED$' || { echo 'Connect to the target Wi-Fi first.'; return 1; }
+    ssid=$(printf '%s\n' "$status" | sed -n 's/^ssid=//p' | head -1)
+    [ -n "$ssid" ] || { echo 'Could not read current Wi-Fi name.'; return 1; }
+    echo "Static mode for Wi-Fi: $ssid"; show_config
+    echo 'Reapplies every 5 seconds on this Wi-Fi, including after reboot.'
+    echo 'Other Wi-Fi networks will not use these settings.'
+    printf 'Enable static mode? [y/N]: '; read -r answer
+    [ "$answer" = y ] || [ "$answer" = Y ] || return 0
+    install_watchdog || { echo 'Startup installation failed; mode unchanged.'; return 1; }
+    printf '%s\n' "$ssid" > "$CONFIG_DIR/ssid" || return 1
+    printf 'static\n' > "$CONFIG_DIR/mode" || return 1
+    /bin/sh "$CONFIG_DIR/auto.sh" --ensure
+    echo 'Static mode enabled. Verify Wi-Fi and connectivity.'
+}
+dhcp_mode() {
+    echo 'Automatic mode will disable static reapply and reconnect Wi-Fi.'
+    printf 'Switch to automatic DHCP? [y/N]: '; read -r answer
+    [ "$answer" = y ] || [ "$answer" = Y ] || return 0
+    mkdir -p "$CONFIG_DIR" || return 1
+    printf 'dhcp\n' > "$CONFIG_DIR/mode" || return 1
+    if ! lipc-set-prop com.lab126.cmd wirelessEnable 0; then echo 'Mode saved; turn Wi-Fi off and on manually.'; return 1; fi
+    sleep 2
+    if ! lipc-set-prop com.lab126.cmd wirelessEnable 1; then echo 'Turn Wi-Fi on manually in Settings.'; return 1; fi
+    echo 'Automatic mode selected. Wait for Wi-Fi to reconnect.'
+}
 ping_target() {
     printf 'Host or IP to ping: '; IFS= read -r target || return 1
     valid_target "$target" || { echo 'Invalid host or IP.'; return 1; }
@@ -161,12 +219,17 @@ ping_target() {
 while :; do
     clear
     echo 'Kindle Wi-Fi IPv4 Settings'
+    mode=$(cat "$CONFIG_DIR/mode" 2>/dev/null)
+    if [ "$mode" = static ]; then echo "Mode: STATIC ($(cat "$CONFIG_DIR/ssid" 2>/dev/null))"; else echo 'Mode: AUTO (DHCP)'; fi
+    echo
     echo '1. Enter and save settings'
     echo '2. View saved settings'
     echo '3. Apply saved settings now'
     echo '4. Show current network'
     echo '5. Ping host or IP'
-    echo '6. Exit'
+    echo '6. Use static IP (automatic reapply)'
+    echo '7. Use automatic IP (DHCP)'
+    echo '8. Exit'
     printf '\nChoice: '; IFS= read -r choice || exit 0
     case "$choice" in
         1) save_config; pause ;;
@@ -174,7 +237,9 @@ while :; do
         3) apply_config; pause ;;
         4) ifconfig wlan0; route -n; pause ;;
         5) ping_target; pause ;;
-        6) exit 0 ;;
-        *) echo 'Choose 1-6.'; pause ;;
+        6) static_mode; pause ;;
+        7) dhcp_mode; pause ;;
+        8) exit 0 ;;
+        *) echo 'Choose 1-8.'; pause ;;
     esac
 done

@@ -1,9 +1,13 @@
 # Kindle Wi-Fi IP Settings（测试版）
 
-KUAL 扩展，依赖设备已安装的 `/mnt/us/extensions/kterm`。在 Kindle 屏幕键盘中输入并保存 IPv4、子网掩码、网关和 DNS，查看当前网络，临时应用配置，并可 Ping IP 或域名。
+适用于装有 KUAL、kterm 的越狱 Kindle。输入并保存 IPv4、子网掩码、网关和 DNS；查看当前网络；Ping IP 或域名；切换静态和 DHCP 模式。
 
-安装：把此目录内容复制到 Kindle 的 `/mnt/us/extensions/kindle-network/`，从 KUAL 选择 `Wi-Fi IP Settings`。配置保存在同目录的 `network.conf`，包含网络地址，不应提交。程序不会收集或修改 Wi-Fi 密码。
+把此目录内容复制至 `/mnt/us/extensions/kindle-network/`（保留已有 `network.conf`），从 KUAL 打开 `Wi-Fi IP Settings`。设置保存在设备该目录，不应提交。程序不读取或修改 Wi-Fi 密码。
 
-静态设置需要在当前连接目标 Wi-Fi 后手动应用：先保存，再选择应用并确认。启动后 90 秒内不选择保留，会尝试恢复之前的地址、路由和 DNS；退出或出现异常时如网络未恢复，请重新连接 Wi-Fi 或重启 Kindle。此功能还没有验证无 DHCP 网络中的关联、断线重连和开机持久化，不应视为最终方案。系统 DHCP 客户端或 Wi-Fi 管理器可能覆盖手动设置。当前没有配置开机自启，也不会修改系统文件来开机自启。
+- 选择静态模式前需保存参数，并连接目标 Wi-Fi。工具记录当前 SSID，只在设备关联该 SSID 时每 5 秒尝试恢复地址、路由和 DNS；其他 Wi-Fi 不应用这些设置。
+- 首次启用静态模式会在 `/etc/crontab/root` 追加带 `kindle-network-watchdog` 标记的一行，用于重启后启动监测，不覆盖其他计划任务。启动后、USB 存储卸载或设备睡眠时生效时间可能延迟。
+- 选择 DHCP 模式会停止静态重用，并通过系统 Wi-Fi 开关重新连接；所选模式和参数保留，cron 条目在 DHCP 模式下不执行静态修改。
+- 临时测试模式有 90 秒回退；请在独立安全的网络测试，不保证 DHCP 和系统 Wi-Fi 管理器不会干扰。
+- 域名 Ping 依赖 DNS；Ping 失败也可能是目标屏蔽 ICMP。
 
-Ping 选项发送 3 个 ICMP 包；失败不一定说明网络不通，目标可能屏蔽 ICMP。域名测试还依赖 DNS。
+在有 DHCP 的网络中，已验证手动静态设置、Ping、重启后自动恢复静态地址、切换回 DHCP，以及用户执行 Wi-Fi 重连后的静态地址与网关。无 DHCP 环境仍须真机测试。Kindle 系统可能在 DHCP 失败时断开 Wi-Fi 关联，不能假设监测脚本一定能维持连接。
