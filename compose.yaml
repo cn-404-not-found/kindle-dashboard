@@ -1,7 +1,6 @@
 services:
   kindle-dashboard:
-    image: kindle-dashboard:local
-    build: .
+    image: ghcr.io/cn-404-not-found/kindle-dashboard:latest
     restart: unless-stopped
     ports:
       - "${HOST_PORT:-8080}:8080"

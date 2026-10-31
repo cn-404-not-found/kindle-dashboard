@@ -3,5 +3,4 @@
 !go.mod
 !go.sum
 !*.go
-!Sarasa-Regular.ttc
-!Sarasa-Bold.ttc
+!config.example.json

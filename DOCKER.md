@@ -1,6 +1,19 @@
 # Docker 部署
 
-所有日常配置放在项目目录的 `.env` 文件中，不需要修改 `compose.yaml`。Compose 将这些值传给程序：
+GitHub Actions 在 `main` 更新后自动构建并发布 `ghcr.io/cn-404-not-found/kindle-dashboard:latest`（linux/amd64 和 linux/arm64）。仓库为私有仓库，镜像通常也是私有的，需要有包读取权限的 GitHub 账号登录 GHCR。首次发布结果以 GitHub Actions 状态为准。
+
+镜像包含字体和程序，部署机器不需要 Go 或字体文件。仅需下载本仓库中的 `compose.yaml` 与 `.env.example`，把示例复制成 `.env`：
+
+```sh
+cp .env.example .env
+# 私有镜像：使用具有 read:packages 权限的 GitHub classic PAT 登录。
+# 安全输入：按提示输入 PAT；不要把令牌写入 .env 或命令历史。
+docker login ghcr.io -u 你的GitHub用户名
+docker compose pull
+docker compose up -d
+```
+
+`.env` 包含：
 
 ```dotenv
 HOST_PORT=8080
@@ -9,34 +22,16 @@ CITY_ID=
 TIMEZONE_OFFSET=8
 ```
 
-- `HOST_PORT`：Docker 主机对外端口；容器内固定监听 8080。例如填 `58188` 后，通过 `http://主机IP:58188/screen.png` 访问。
-- `CITY_NAME`：看板显示的城市名。内置城市见 `weather.go` 的 `weatherCityIDs`。
-- `CITY_ID`：中国天气网的 9 位城市代码。内置城市可留空；其他城市需要填写对应代码。
-- `TIMEZONE_OFFSET`：UTC 整小时偏移，中国为 `8`。这是固定偏移，不会自动处理夏令时。
+`HOST_PORT` 是主机对外端口，容器内固定 8080；`CITY_NAME` 是城市名；内置城市可不填 `CITY_ID`，其他城市需填中国天气网 9 位城市代码；`TIMEZONE_OFFSET` 为相对 UTC 的整小时固定偏移，中国为 8，不处理夏令时。修改 `.env` 后执行 `docker compose up -d` 重新创建容器；单独 `restart` 不会重新读取环境变量。
 
-## 首次构建并运行
+访问 `http://主机IP:8080/screen.png`（如更改端口，请使用相应端口），并在 Kindle 的 `Set server address` 中填写主机地址和端口。服务端需能访问中国天气网，主机端口需能从 Kindle 访问。查看日志 `docker compose logs -f`；停止 `docker compose down`。服务非 Docker 运行仍支持原有 `config.json`。
 
-1. 安装 Docker 和 Docker Compose。将 `Sarasa-Regular.ttc` 和 `Sarasa-Bold.ttc` 放在仓库根目录：字体不会提交到 Git，但构建时会被复制进镜像。其他环境可从 [Sarasa Gothic 官方发布页](https://github.com/be5invis/Sarasa-Gothic/releases)获取 TTC 文件。
-2. 复制示例配置，修改 `.env`，然后构建并启动：
+更新镜像：`docker compose pull && docker compose up -d`。离线转移可在已登录且能访问镜像的机器上执行 `docker pull ghcr.io/cn-404-not-found/kindle-dashboard:latest` 后，再使用 `docker save` / `docker load`。不要提交真实 `.env`、访问令牌或字体。
 
-   ```sh
-   cp -n .env.example .env
-   docker compose up -d --build
-   ```
-
-3. 打开 `http://主机IP:8080/screen.png`。如果修改了 `HOST_PORT`，使用对应端口；在 Kindle 的 `Set server address` 中填入相同的主机地址和端口。
-
-修改 `.env` 后执行 `docker compose up -d`，使 Compose 重新创建配置已变化的容器；单独执行 `docker compose restart` 不会重新读取环境变量。查看日志：`docker compose logs -f`；停止：`docker compose down`。
-
-服务端需要能访问中国天气网，且端口需允许 Kindle 连接。不要提交真实的 `.env` 或字体文件。镜像内部保留默认 `config.json`，环境变量优先覆盖城市和时区；非 Docker 运行方式仍可使用原有 JSON 文件。
-
-## 搬到其他 Docker 机器
-
-在可构建的机器上运行 `docker save -o kindle-dashboard-image.tar kindle-dashboard:local`，将 tar 包、`compose.yaml`、`.env.example` 和 `.env` 传到目标机。目标机运行：
+## 本地构建
 
 ```sh
-docker load -i kindle-dashboard-image.tar
-docker compose up -d --no-build
+docker build -t ghcr.io/cn-404-not-found/kindle-dashboard:local .
 ```
 
-镜像只包含构建时所选 CPU 架构；目标机架构需要匹配。字体已经包含在镜像里。源码改动后需重新构建并重新传输镜像。
+构建时 Dockerfile 自动从官方固定版本下载更纱 TTC 字体并校验 SHA-256；需要网络访问 GitHub。若想本地运行这个 `:local` 标签，可使用 `docker run` 并传入 `CITY_NAME`、`CITY_ID`、`TIMEZONE_OFFSET`；默认 Compose 指向远端 `:latest`。
