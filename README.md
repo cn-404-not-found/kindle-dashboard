@@ -52,12 +52,11 @@ TIMEZONE_OFFSET=8
 - `CITY_ID`：中国天气网 9 位城市代码。使用内置城市时可留空；其他城市需要填写。
 - `TIMEZONE_OFFSET`：相对 UTC 的整小时固定偏移，中国为 `8`；不自动处理夏令时。
 
-### 2. 登录并启动
+### 2. 下载并启动
 
-**镜像包目前为私有，无法匿名拉取**。先在 GitHub 创建有 `read:packages` 权限的 classic personal access token，并确保该账号可访问镜像包；按提示输入令牌，不要把令牌写入 `.env` 或命令历史。登录说明参见 [GitHub 容器仓库文档](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#authenticating-with-a-personal-access-token-classic)。
+镜像已公开，无需登录 GitHub 或配置令牌：
 
 ```sh
-docker login ghcr.io -u 你的GitHub用户名
 docker compose pull
 docker compose up -d
 ```

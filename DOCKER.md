@@ -1,14 +1,11 @@
 # Docker 部署
 
-GitHub Actions 在 `main` 更新后自动构建并发布 `ghcr.io/cn-404-not-found/kindle-dashboard:latest`（linux/amd64 和 linux/arm64）。仓库已公开，但镜像包目前为私有，需要有包读取权限的 GitHub 账号登录 GHCR。
+GitHub Actions 在 `main` 更新后自动构建并发布 `ghcr.io/cn-404-not-found/kindle-dashboard:latest`（linux/amd64 和 linux/arm64）。仓库和镜像均已公开，拉取时无需登录 GHCR。
 
 镜像包含字体和程序，部署机器不需要 Go 或字体文件。仅需下载本仓库中的 `compose.yaml` 与 `.env.example`，把示例复制成 `.env`：
 
 ```sh
 cp .env.example .env
-# 私有镜像：使用具有 read:packages 权限的 GitHub classic PAT 登录。
-# 安全输入：按提示输入 PAT；不要把令牌写入 .env 或命令历史。
-docker login ghcr.io -u 你的GitHub用户名
 docker compose pull
 docker compose up -d
 ```
@@ -26,7 +23,7 @@ TIMEZONE_OFFSET=8
 
 访问 `http://主机IP:8080/screen.png`（如更改端口，请使用相应端口），并在 Kindle 的 `Set server address` 中填写主机地址和端口。服务端需能访问中国天气网，主机端口需能从 Kindle 访问。查看日志 `docker compose logs -f`；停止 `docker compose down`。服务非 Docker 运行仍支持原有 `config.json`。
 
-更新镜像：`docker compose pull && docker compose up -d`。离线转移可在已登录且能访问镜像的机器上执行 `docker pull ghcr.io/cn-404-not-found/kindle-dashboard:latest` 后，再使用 `docker save` / `docker load`。不要提交真实 `.env`、访问令牌或字体。
+更新镜像：`docker compose pull && docker compose up -d`。离线转移可在能访问镜像的机器上执行 `docker pull ghcr.io/cn-404-not-found/kindle-dashboard:latest` 后，再使用 `docker save` / `docker load`。不要提交真实 `.env`、访问令牌或字体。
 
 ## 本地构建
 
