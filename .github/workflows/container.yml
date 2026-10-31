@@ -43,3 +43,9 @@ jobs:
             ghcr.io/cn-404-not-found/kindle-dashboard:${{ github.sha }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+      - name: Smoke test published image
+        run: |
+          docker run -d --rm --name kindle-smoke -p 127.0.0.1:18080:8080 ghcr.io/cn-404-not-found/kindle-dashboard:${{ github.sha }}
+          trap 'docker logs kindle-smoke || true; docker stop kindle-smoke || true' EXIT
+          curl --fail --silent --show-error --retry 8 --retry-delay 2 --retry-connrefused --max-time 60 http://127.0.0.1:18080/screen.png -o /tmp/screen.png
+          python3 -c 'import struct; b=open("/tmp/screen.png","rb").read(26); assert b[:8] == b"\x89PNG\r\n\x1a\n" and struct.unpack(">II", b[16:24]) == (1072, 1448) and b[25] == 0'
