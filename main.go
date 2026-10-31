@@ -77,6 +77,7 @@ type displayResponse struct {
 	ImageURL    string `json:"image_url"`
 	Filename    string `json:"filename"`
 	RefreshRate int    `json:"refresh_rate"`
+	ServerTime  int64  `json:"server_time"`
 }
 
 // ----------------------------------------------------------------------------
@@ -467,8 +468,10 @@ func apiDisplayHandler(w http.ResponseWriter, r *http.Request) {
 		ImageURL:    "/screen.png",
 		Filename:    "dashboard.png",
 		RefreshRate: 60, // 建议刷新间隔（秒）
+		ServerTime:  time.Now().Unix(),
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		http.Error(w, "encode failed: "+err.Error(), http.StatusInternalServerError)
 	}

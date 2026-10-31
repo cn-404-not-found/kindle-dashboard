@@ -6,13 +6,26 @@
 #   1. 向服务端 GET /api/display 取图信息（image_url / refresh_rate）
 #   2. 下载 PNG 图片
 #   3. 用 eips 显示到墨水屏
-#   4. 按 refresh_rate 循环刷新
+#   4. 按服务端时钟对齐 refresh_rate 的时间边界刷新
 #
 # 说明：
 #   - 本脚本【自包含】，不再依赖 utils.sh。
 #   - 服务端只使用 png-width / png-height 两个请求头来按设备分辨率自适应出图。
 #   - 其余头（access-token / battery-voltage / rssi / ID）服务端忽略，保留仅为兼容 trmnl 协议。
 #
+
+# Return seconds until the next interval boundary; an exact boundary waits a full interval.
+next_refresh_delay() {
+  case "$1:$2:$3" in *[!0-9:-]*|:*|*:) return 1 ;; esac
+  [ "$3" -gt 0 ] && [ "$3" -le 86400 ] || return 1
+  remainder=$(( ($1 + $2) % $3 ))
+  [ "$remainder" -ge 0 ] || remainder=$((remainder + $3))
+  echo $(( $3 - remainder ))
+}
+if [ "${1:-}" = --next-refresh-delay ]; then
+  next_refresh_delay "$2" "$3" "$4"
+  exit $?
+fi
 
 # ============================ 用户配置 ============================
 # 在 KUAL 的 Set server address 中设置；每次刷新读取，不执行配置内容。
@@ -69,6 +82,7 @@ while true; do
   eips_debug "TRMNL Kindle client"
 
   # 1) 取图信息
+  REQUEST_START=$(date +%s)
   RESPONSE=$(curl -fsS --connect-timeout 10 --max-time 30 \
     -H "access-token: $API_KEY" \
     -H "battery-voltage: $(get_kindle_battery)" \
@@ -78,6 +92,7 @@ while true; do
     -H "ID: $(get_mac_address)" \
     -A "$USER_AGENT" \
     "${BASE_URL}/api/display")
+  REQUEST_END=$(date +%s)
 
   if [ -z "$RESPONSE" ]; then
     eips_debug "Error: No JSON response."
@@ -89,7 +104,21 @@ while true; do
   # 2) 解析 image_url（服务端返回 /screen.png 这类相对路径）
   IMAGE_URL=$(echo "$RESPONSE" | sed -n 's/.*"image_url":"\([^"]*\)".*/\1/p' | sed 's/\\u0026/\&/g')
   REFRESH_RATE=$(echo "$RESPONSE" | sed -n 's/.*"refresh_rate":\([^,}]*\).*/\1/p')
-  [ -z "$REFRESH_RATE" ] && REFRESH_RATE="60"
+  case "$REFRESH_RATE" in ''|*[!0-9]*) REFRESH_RATE=60 ;; esac
+  [ "$REFRESH_RATE" -gt 0 ] && [ "$REFRESH_RATE" -le 86400 ] || REFRESH_RATE=60
+  SERVER_TIME=$(echo "$RESPONSE" | sed -n 's/.*"server_time":\([0-9]*\).*/\1/p')
+  OFFSET=0
+  case "$SERVER_TIME:$REQUEST_START:$REQUEST_END" in
+    *[!0-9:]*|:*|*::*|*:) eips_debug "Using Kindle clock for alignment." ;;
+    *)
+      # Use the request midpoint to limit clock offset error due to network latency.
+      RTT=$((REQUEST_END - REQUEST_START))
+      if [ "$RTT" -ge 0 ] && [ "$RTT" -le 10 ]; then
+        OFFSET=$((SERVER_TIME - REQUEST_START - RTT / 2))
+      else
+        eips_debug "Clock sample unavailable; using Kindle clock."
+      fi ;;
+  esac
 
   if [ -z "$IMAGE_URL" ]; then
     eips_debug "Error: parse image_url failed"
@@ -129,6 +158,7 @@ while true; do
   sleep 1
   eips -g "$IMAGE_PATH"
 
-  eips_debug "Sleeping for ${REFRESH_RATE}s..."
-  sleep "$REFRESH_RATE"
+  DELAY=$(next_refresh_delay "$(date +%s)" "$OFFSET" "$REFRESH_RATE") || DELAY="$REFRESH_RATE"
+  eips_debug "Next refresh in ${DELAY}s."
+  sleep "$DELAY"
 done
