@@ -15,8 +15,8 @@
 #
 
 # ============================ 用户配置 ============================
-# 改成你 Alpine 服务端的实际局域网地址；端口须与 config.json 的 port 一致
-BASE_URL="http://192.168.100.231:58188"
+# 在 KUAL 的 Set server address 中设置；每次刷新读取，不执行配置内容。
+SERVER_SETTINGS="${KINDLE_DASHBOARD_DIR:-/mnt/us/extensions/kindle-dashboard}/server-settings.sh"
 
 API_KEY="kindle-dashboard"        # 服务端不校验，随便填
 USER_AGENT="trmnl-display/0.1.1"
@@ -61,10 +61,15 @@ eips_debug() {
 # ----------------------------- 主循环 -----------------------------
 while true; do
   DEBUG_Y=0
+  BASE_URL=$(/bin/sh "$SERVER_SETTINGS" --get) || {
+    eips_debug "Invalid server address."
+    sleep 60
+    continue
+  }
   eips_debug "TRMNL Kindle client"
 
   # 1) 取图信息
-  RESPONSE=$(curl -s \
+  RESPONSE=$(curl -fsS --connect-timeout 10 --max-time 30 \
     -H "access-token: $API_KEY" \
     -H "battery-voltage: $(get_kindle_battery)" \
     -H "png-width: $PNG_WIDTH" \
@@ -111,8 +116,8 @@ while true; do
   IMAGE_PATH="$TMP_DIR/$FILENAME"
   rm -f "$IMAGE_PATH"
 
-  curl -s -o "$IMAGE_PATH" -A "$USER_AGENT" "$IMAGE_URL"
-  if [ ! -s "$IMAGE_PATH" ]; then
+  if ! curl -fsS --connect-timeout 10 --max-time 45 -o "$IMAGE_PATH" \
+    -H "png-width: $PNG_WIDTH" -H "png-height: $PNG_HEIGHT" -A "$USER_AGENT" "$IMAGE_URL" || [ ! -s "$IMAGE_PATH" ]; then
     eips_debug "Error: download failed!"
     eips_debug "Retry in 60s..."
     sleep 60
