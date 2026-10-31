@@ -9,6 +9,7 @@
 - 月历以周一开头，突出今天，显示农历月份、传统节日和节气。
 - 输出 8 位灰度 PNG，适配 Kindle `eips`；可按客户端上报的屏幕尺寸等比缩放。
 - Kindle 端通过 KUAL 启动或停止看板，并可用屏幕键盘设置服务器地址。
+- 看板运行时请求阻止自动屏保，意外退出后尝试重启；触摸屏幕点亮前光，30 秒后调回最低亮度。
 - 附带实验性的 Wi-Fi IPv4 设置工具，可切换 DHCP 和静态地址，并测试 Ping。
 
 ## 工作方式
@@ -17,7 +18,7 @@
 中国天气网页面 ──> Go 服务端 ──HTTP/PNG──> Kindle 客户端 ──> 墨水屏
 ```
 
-服务端需要能访问天气来源，Kindle 需要能访问服务端。程序运行时不依赖 AI 或数据库。天气抓取结果缓存 30 分钟；获取失败时会尝试使用缓存或显示不可用，公开网页的结构或访问规则变化可能影响数据获取。
+服务端需要能访问天气来源，Kindle 需要能访问服务端。程序运行时不依赖 AI、天气 API 密钥或数据库。城市名通过中国天气网城市列表自动匹配；天气抓取结果通常缓存 30 分钟，获取失败时会尝试使用缓存或显示不可用。公开网页的结构或访问规则变化可能影响数据获取。
 
 ## 安装与部署（Docker）
 
@@ -75,15 +76,30 @@ docker compose down         # 停止并移除容器
 
 ## Kindle 客户端
 
-客户端需要可运行 KUAL 的 Kindle，以及设备上已安装的 kterm。将 [`kindle-client/dashboard-extension/`](kindle-client/dashboard-extension/) 中的扩展文件复制到 Kindle 的 `/mnt/us/extensions/kindle-dashboard/`，并将 [`kindle-client/TRMNL.sh`](kindle-client/TRMNL.sh) 复制到该目录，命名为 `dashboard.sh`。具体步骤见[客户端说明](kindle-client/dashboard-extension/README.md)。
+### 准备条件
 
-从 KUAL 打开 **Kindle Dashboard**：
+- 已越狱、可运行 KUAL 的 Kindle；设置服务器地址还需要安装 kterm。越狱、KUAL 和 kterm 的安装不由本项目提供。
+- Kindle 可以通过 Wi-Fi 访问运行中的服务端。输入的必须是 Kindle 能访问的服务器地址，不能填写 Kindle 自身的 `localhost`。
+- 已在 Kindle Paperwhite 3（第 7 代、固件 5.16.2.1.1）验证图片显示、触摸前光和静置约 5 分钟持续刷新；其他设备和固件尚未全面测试。
 
-- **Start dashboard**：启动定时显示。
-- **Stop dashboard**：停止客户端。
-- **Set server address**：输入服务器地址，例如 `192.168.1.20:8080`。保存后，运行中的客户端在下次刷新时读取新地址。
+### 安装
 
-服务端提供 `GET /screen.png` 和 `GET /api/display`；访问根路径 `/` 返回 404 属正常情况。
+1. 从 GitHub 仓库下载项目（页面上选择 **Code → Download ZIP**）并解压。
+2. 用 USB 将 Kindle 连接电脑，打开 Kindle 存储盘，在 `extensions` 下新建 `kindle-dashboard` 文件夹。
+3. 将项目中 [`kindle-client/dashboard-extension/`](kindle-client/dashboard-extension/) 目录下的 `config.xml`、`menu.json`、`start.sh`、`stop.sh`、`power.sh`、`touch-light.sh`、`set-server.sh`、`server-settings.sh` 复制到该文件夹。
+4. 将 [`kindle-client/TRMNL.sh`](kindle-client/TRMNL.sh) 复制到同一文件夹，并重命名为 `dashboard.sh`。
+5. 安全推出 Kindle，打开 KUAL → **Kindle Dashboard** → **Set server address**，输入例如 `192.168.1.20:8080` 的服务器地址并确认，再选择 **Start dashboard**。
+
+也可输入 `http://` 或 `https://` 开头的地址；不支持 URL 路径、查询参数或 IPv6 字面地址。设置保存在设备本地 `server-url.txt`，运行中修改后通常在下一次刷新生效。升级时保留该文件；升级客户端脚本后先停止再启动看板。详细说明见[客户端说明](kindle-client/dashboard-extension/README.md)。
+
+### 运行和前光
+
+- **Start dashboard**：启动看板，默认约每分钟从服务端下载并显示图片；下载失败时会稍后重试。看板进程意外退出后会尝试重启。
+- **Stop dashboard**：停止看板，恢复启动前的前光亮度和屏保设置。
+- 运行期间会请求阻止自动屏保，并将前光亮度设为 0；触摸屏幕后设为 12，约 30 秒无触摸后恢复为 0。长时间展示建议连接电源。
+- 触摸不会被看板拦截，仍可能触发 Kindle 原有界面。当前触摸设备路径针对上述 Paperwhite 3，其他型号需自行验证。设备重启后需要从 KUAL 再次启动看板。
+
+服务端提供 `GET /screen.png` 和 `GET /api/display`；访问根路径 `/` 返回 404 属正常情况。浏览器预览地址为 `http://服务器IP:端口/screen.png`。服务本身没有访问认证，请限制在可信网络内访问。
 
 ## Kindle 网络设置工具
 
@@ -105,6 +121,6 @@ go run .
 ## 已知限制
 
 - 天气来自公开网页而非稳定的官方 API，页面变化或临近午夜的数据更新延迟可能导致天气暂时不可用。
-- Kindle 真机已验证 Paperwhite 3 的灰度显示；其他型号和固件未全面测试。
+- 已在 Paperwhite 3 上验证灰度显示、触摸前光和约 5 分钟静置刷新；尚未完成更长时间的连续运行测试，其他型号和固件未全面测试。
 - 网络工具尚未在无 DHCP 环境中完成验证；切换网络设置可能暂时断开连接。
 - 本项目目前没有声明开源许可证；使用及再分发权限以仓库所有者后续提供的许可为准。
