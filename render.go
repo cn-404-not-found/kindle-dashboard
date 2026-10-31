@@ -476,7 +476,7 @@ func drawCalendar(r *renderer, data DashboardData, baseDate time.Time) {
 					r.dc.SetColor(color.RGBA{0x99, 0x99, 0x99, 0xff})
 					r.dc.SetDash() // 实线
 				} else {
-					r.dc.SetColor(color.RGBA{0x99, 0x99, 0x99, 0xff})
+					r.dc.SetColor(color.RGBA{0xc0, 0xc0, 0xc0, 0xff})
 					r.dc.SetDash(4, 4) // 虚线
 				}
 				r.dc.DrawRectangle(x, y, colW, rowH)
@@ -491,8 +491,8 @@ func drawCalendar(r *renderer, data DashboardData, baseDate time.Time) {
 				numColor = color.White
 				lunarColor = color.RGBA{0xdd, 0xdd, 0xdd, 0xff}
 			case !cell.IsCurrentMonth:
-				numColor = color.RGBA{0x66, 0x66, 0x66, 0xff}
-				lunarColor = color.RGBA{0x66, 0x66, 0x66, 0xff}
+				numColor = color.RGBA{0xb0, 0xb0, 0xb0, 0xff}
+				lunarColor = color.RGBA{0xb0, 0xb0, 0xb0, 0xff}
 			default:
 				numColor = color.Black
 				lunarColor = color.RGBA{0x55, 0x55, 0x55, 0xff}
