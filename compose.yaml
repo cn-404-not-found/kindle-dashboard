@@ -1,0 +1,14 @@
+services:
+  kindle-dashboard:
+    image: kindle-dashboard:local
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-8080}:8080"
+    volumes:
+      - type: bind
+        source: ./config.json
+        target: /app/config.json
+        read_only: true
+        bind:
+          create_host_path: false
