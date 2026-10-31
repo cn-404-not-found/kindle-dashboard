@@ -130,9 +130,21 @@ func parseChinaWeather(page string, now time.Time) (weatherResult, error) {
 	if len(blocks) < 5 {
 		return weatherResult{}, fmt.Errorf("预报不足五天")
 	}
+	// 页面在午夜后可能仍从前一天开始；从真正的今天起取连续五天。
+	start := -1
+	for i, block := range blocks {
+		day := dayPattern.FindStringSubmatch(block[1])
+		if len(day) == 2 && day[1] == strconv.Itoa(now.Day()) {
+			start = i
+			break
+		}
+	}
+	if start < 0 || len(blocks)-start < 5 {
+		return weatherResult{}, fmt.Errorf("未找到从今天开始的五日预报")
+	}
 	var out weatherResult
 	out.forecastDate = now
-	for i, block := range blocks[:5] {
+	for i, block := range blocks[start : start+5] {
 		day := dayPattern.FindStringSubmatch(block[1])
 		if len(day) < 2 || day[1] != strconv.Itoa(now.AddDate(0, 0, i).Day()) {
 			return weatherResult{}, fmt.Errorf("预报日期与当前日期不匹配")
@@ -144,7 +156,7 @@ func parseChinaWeather(page string, now time.Time) (weatherResult, error) {
 		}
 		text := strings.TrimSpace(html.UnescapeString(tagPattern.ReplaceAllString(desc[1], "")))
 		nums := numberPattern.FindAllString(tagPattern.ReplaceAllString(temps[1], " "), -1)
-		if i == 0 && len(nums) < 2 {
+		if start+i == 0 && len(nums) < 2 {
 			title := titlePattern.FindStringSubmatch(page)
 			if len(title) > 1 {
 				re := regexp.MustCompile(`(-?\d+)\s*/\s*(-?\d+)\s*°C`)

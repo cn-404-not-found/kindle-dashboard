@@ -34,3 +34,26 @@ func TestParseChinaWeather(t *testing.T) {
 		t.Fatal("expected invalid temperature to fail")
 	}
 }
+
+func TestParseChinaWeatherAfterMidnight(t *testing.T) {
+	loc := time.FixedZone("CST", 8*3600)
+	now := time.Date(2026, 11, 1, 1, 30, 0, 0, loc)
+	var b strings.Builder
+	b.WriteString(`<input id="hidden_title" value="10月31日20时 多云 23/30°C"/><div id="7d" class="c7d"><ul>`)
+	for i := -1; i < 6; i++ {
+		d := now.AddDate(0, 0, i)
+		fmt.Fprintf(&b, `<li class="sky skyid"><h1>%d日（预报）</h1><p class="wea">多云</p><p class="tem"><span>29℃</span>/<i>22℃</i></p></li>`, d.Day())
+	}
+	b.WriteString(`</ul></div><script>var observe24h_data = {"od":{"od0":"202611010100","od2":[{"od22":"25.4"}]}};</script>`)
+	result, err := parseChinaWeather(b.String(), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.forecast) != 5 || !result.forecast[0].IsToday || result.forecast[0].HighTemp != 29 || result.temp != 25.4 {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+	bad := strings.Replace(b.String(), `<h1>2日`, `<h1>3日`, 1)
+	if _, err := parseChinaWeather(bad, now); err == nil {
+		t.Fatal("expected nonconsecutive dates to fail")
+	}
+}
