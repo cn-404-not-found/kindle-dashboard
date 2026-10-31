@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/6tail/lunar-go/calendar"
@@ -180,22 +181,45 @@ func resolveCityCoords(name string) (lat, lon float64, ok bool) {
 func loadConfig() serverConfig {
 	c := defaultConfig()
 	data, err := os.ReadFile(resolveFontPath("config.json"))
-	if err != nil {
-		return c // 无配置文件 → 全部使用默认
+	if err == nil {
+		if err := json.Unmarshal(data, &c); err != nil {
+			log.Printf("配置文件解析失败，使用默认配置: %v", err)
+			c = defaultConfig()
+		}
+	} else if !os.IsNotExist(err) {
+		log.Printf("读取配置文件失败，使用默认配置: %v", err)
 	}
-	if err := json.Unmarshal(data, &c); err != nil {
-		log.Printf("配置文件解析失败，使用默认配置: %v", err)
-		return defaultConfig()
-	}
-	// 端口合法性兜底：非法值回退默认 8080，避免 ListenAndServe 失败。
 	if c.Port <= 0 || c.Port > 65535 {
 		log.Printf("配置端口 %d 非法，回退默认 8080", c.Port)
 		c.Port = defaultConfig().Port
 	}
-	// 时区偏移兜底：超出合理范围 [-12, 14] 视为非法，回退默认 8（中国 UTC+8）。
 	if c.TimezoneOffset < -12 || c.TimezoneOffset > 14 {
 		log.Printf("配置时区偏移 %d 非法，回退默认 8（UTC+8）", c.TimezoneOffset)
 		c.TimezoneOffset = defaultConfig().TimezoneOffset
+	}
+	return applyEnvironment(c)
+}
+
+// applyEnvironment 允许部署环境覆盖 JSON，非法值保留已验证的文件或默认值。
+func applyEnvironment(c serverConfig) serverConfig {
+	if value, ok := os.LookupEnv("CITY_NAME"); ok && strings.TrimSpace(value) != "" {
+		c.CityName = strings.TrimSpace(value)
+	}
+	if value, ok := os.LookupEnv("CITY_ID"); ok {
+		value = strings.TrimSpace(value)
+		if value == "" || cityIDPattern.MatchString(value) {
+			c.CityID = value
+		} else {
+			log.Printf("环境变量 CITY_ID 无效，保留已有配置")
+		}
+	}
+	if value, ok := os.LookupEnv("TIMEZONE_OFFSET"); ok && strings.TrimSpace(value) != "" {
+		offset, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil || offset < -12 || offset > 14 {
+			log.Printf("环境变量 TIMEZONE_OFFSET 无效，保留已有配置")
+		} else {
+			c.TimezoneOffset = offset
+		}
 	}
 	return c
 }

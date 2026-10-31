@@ -5,10 +5,7 @@ services:
     restart: unless-stopped
     ports:
       - "${HOST_PORT:-8080}:8080"
-    volumes:
-      - type: bind
-        source: ./config.json
-        target: /app/config.json
-        read_only: true
-        bind:
-          create_host_path: false
+    environment:
+      CITY_NAME: "${CITY_NAME:-南宁}"
+      CITY_ID: "${CITY_ID:-}"
+      TIMEZONE_OFFSET: "${TIMEZONE_OFFSET:-8}"

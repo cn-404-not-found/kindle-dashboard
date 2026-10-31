@@ -12,3 +12,6 @@
 *.dll
 *.so
 *.dylib
+
+# 本机 Docker 配置
+.env
