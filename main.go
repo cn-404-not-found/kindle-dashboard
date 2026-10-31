@@ -352,11 +352,33 @@ func screenHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// eips 在部分 Kindle 固件上会将 RGB PNG 横向展开；统一编码为 8 位灰度。
+	pngBytes, err = encodeGrayscalePNG(pngBytes)
+	if err != nil {
+		http.Error(w, "grayscale conversion failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "image/png")
 	// 墨水屏设备通常会缓存图片，禁用缓存以保证每次拉取最新画面。
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
 	w.Write(pngBytes)
+}
+
+// encodeGrayscalePNG 将 PNG 转换为单通道灰度，兼容 Kindle 的 eips 显示。
+func encodeGrayscalePNG(src []byte) ([]byte, error) {
+	img, err := png.Decode(bytes.NewReader(src))
+	if err != nil {
+		return nil, err
+	}
+	gray := image.NewGray(img.Bounds())
+	draw.Draw(gray, gray.Bounds(), img, img.Bounds().Min, draw.Src)
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, gray); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 // fitToDevice 将基准 PNG（1072×1448）缩放/居中适配到设备帧缓冲尺寸 devW×devH，
