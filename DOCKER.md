@@ -15,11 +15,10 @@ docker compose up -d
 ```dotenv
 HOST_PORT=8080
 CITY_NAME=南宁
-CITY_ID=
 TIMEZONE_OFFSET=8
 ```
 
-`HOST_PORT` 是主机对外端口，容器内固定 8080；`CITY_NAME` 是城市名；内置城市可不填 `CITY_ID`，其他城市需填中国天气网 9 位城市代码；`TIMEZONE_OFFSET` 为相对 UTC 的整小时固定偏移，中国为 8，不处理夏令时。修改 `.env` 后执行 `docker compose up -d` 重新创建容器；单独 `restart` 不会重新读取环境变量。
+`HOST_PORT` 是主机对外端口，容器内固定 8080；`CITY_NAME` 是城市名，程序会自动查询城市代码；同名地区可填写 `省/城市`；`TIMEZONE_OFFSET` 为相对 UTC 的整小时固定偏移，中国为 8，不处理夏令时。修改 `.env` 后执行 `docker compose up -d` 重新创建容器；单独 `restart` 不会重新读取环境变量。
 
 访问 `http://主机IP:8080/screen.png`（如更改端口，请使用相应端口），并在 Kindle 的 `Set server address` 中填写主机地址和端口。服务端需能访问中国天气网，主机端口需能从 Kindle 访问。查看日志 `docker compose logs -f`；停止 `docker compose down`。服务非 Docker 运行仍支持原有 `config.json`。
 
@@ -31,4 +30,4 @@ TIMEZONE_OFFSET=8
 docker build -t ghcr.io/cn-404-not-found/kindle-dashboard:local .
 ```
 
-构建时 Dockerfile 自动从官方固定版本下载更纱 TTC 字体并校验 SHA-256；需要网络访问 GitHub。若想本地运行这个 `:local` 标签，可使用 `docker run` 并传入 `CITY_NAME`、`CITY_ID`、`TIMEZONE_OFFSET`；默认 Compose 指向远端 `:latest`。
+构建时 Dockerfile 自动从官方固定版本下载更纱 TTC 字体并校验 SHA-256；需要网络访问 GitHub。若想本地运行这个 `:local` 标签，可使用 `docker run` 并传入 `CITY_NAME`、`TIMEZONE_OFFSET`；默认 Compose 指向远端 `:latest`。

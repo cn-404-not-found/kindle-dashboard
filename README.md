@@ -43,13 +43,11 @@ curl -fsSL -o .env https://raw.githubusercontent.com/cn-404-not-found/kindle-das
 ```dotenv
 HOST_PORT=8080
 CITY_NAME=南宁
-CITY_ID=
 TIMEZONE_OFFSET=8
 ```
 
 - `HOST_PORT`：服务器对外端口，容器内固定为 `8080`。
-- `CITY_NAME`：看板显示的城市；内置城市见 [`weather.go`](weather.go) 中的 `weatherCityIDs`。
-- `CITY_ID`：中国天气网 9 位城市代码。使用内置城市时可留空；其他城市需要填写。
+- `CITY_NAME`：填写城市名，如 `南宁` 或 `苏州`；程序会自动查询对应的天气数据。同名地区可使用 `省/城市`，例如 `广西/南宁`。
 - `TIMEZONE_OFFSET`：相对 UTC 的整小时固定偏移，中国为 `8`；不自动处理夏令时。
 
 ### 2. 下载并启动
@@ -102,7 +100,7 @@ cp -n config.example.json config.json
 go run .
 ```
 
-默认监听 `8080`。非 Docker 运行时可通过 `config.json` 配置端口、城市与时区；`CITY_NAME`、`CITY_ID`、`TIMEZONE_OFFSET` 环境变量优先覆盖相应 JSON 设置。配置在进程启动时读取。
+默认监听 `8080`。非 Docker 运行时可通过 `config.json` 配置端口、城市与时区；`CITY_NAME`、`TIMEZONE_OFFSET` 环境变量优先覆盖相应 JSON 设置。配置在进程启动时读取。
 
 ## 已知限制
 

@@ -6,5 +6,4 @@ services:
       - "${HOST_PORT:-8080}:8080"
     environment:
       CITY_NAME: "${CITY_NAME:-南宁}"
-      CITY_ID: "${CITY_ID:-}"
       TIMEZONE_OFFSET: "${TIMEZONE_OFFSET:-8}"

@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-// 中国天气网城市代码；其他城市可在 config.json 中配置 city_id。
+// 常用城市代码：当城市列表暂时不可用时作为备份。
 var weatherCityIDs = map[string]string{"南宁": "101300101", "北京": "101010100", "上海": "101020100", "广州": "101280101", "深圳": "101280601", "杭州": "101210101", "成都": "101270101", "武汉": "101200101", "西安": "101110101", "重庆": "101040100"}
 
 type weatherResult struct {
@@ -79,10 +79,14 @@ var cityIDPattern = regexp.MustCompile(`^\d{9}$`)
 func fetchChinaWeather(now time.Time) (weatherResult, error) {
 	id := cfg.CityID
 	if id == "" {
-		id = weatherCityIDs[cfg.CityName]
+		var err error
+		id, err = weatherCities.resolve(cfg.CityName)
+		if err != nil {
+			return weatherResult{}, err
+		}
 	}
 	if !cityIDPattern.MatchString(id) {
-		return weatherResult{}, fmt.Errorf("城市 %q 未配置有效的中国天气网 city_id", cfg.CityName)
+		return weatherResult{}, fmt.Errorf("城市 %q 的代码无效", cfg.CityName)
 	}
 	url := "https://www.weather.com.cn/weather/" + id + ".shtml"
 	req, err := http.NewRequest(http.MethodGet, url, nil)
