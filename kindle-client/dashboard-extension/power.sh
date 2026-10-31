@@ -18,17 +18,21 @@ if ! "$LIPC" com.lab126.powerd flIntensity 0; then
 fi
 cleanup() {
   trap '' TERM INT HUP
+  [ -n "$button" ] && kill "$button" 2>/dev/null
   [ -n "$watcher" ] && kill "$watcher" 2>/dev/null
   [ -n "$dashboard" ] && kill "$dashboard" 2>/dev/null
+  [ -n "$button" ] && wait "$button" 2>/dev/null
   [ -n "$watcher" ] && wait "$watcher" 2>/dev/null
   [ -n "$dashboard" ] && wait "$dashboard" 2>/dev/null
   "$LIPC" com.lab126.powerd flIntensity "$old_light" || echo 'Failed to restore frontlight.' >> "$LOG"
   "$LIPC" com.lab126.powerd preventScreenSaver "$old_saver" || echo 'Failed to restore screensaver.' >> "$LOG"
   rm -f "$STATE/touch" "$STATE/lit"
+  "$LIPC" com.lab126.appmgrd start app://com.lab126.booklet.home || echo 'Failed to open Kindle home.' >> "$LOG"
   exit 0
 }
 trap cleanup TERM INT HUP
 /bin/sh "$DIR/touch-light.sh" "$TOUCH" "$STATE" >> "$LOG" 2>&1 & watcher=$!
+/bin/sh "$DIR/exit-button.sh" "$$" >> "$LOG" 2>&1 & button=$!
 while :; do
   /bin/sh "$DIR/dashboard.sh" >> "$LOG" 2>&1 & dashboard=$!
   wait "$dashboard"

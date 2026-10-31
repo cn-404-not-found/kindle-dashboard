@@ -86,7 +86,7 @@ docker compose down         # 停止并移除容器
 
 1. 从 GitHub 仓库下载项目（页面上选择 **Code → Download ZIP**）并解压。
 2. 用 USB 将 Kindle 连接电脑，打开 Kindle 存储盘，在 `extensions` 下新建 `kindle-dashboard` 文件夹。
-3. 将项目中 [`kindle-client/dashboard-extension/`](kindle-client/dashboard-extension/) 目录下的 `config.xml`、`menu.json`、`start.sh`、`stop.sh`、`power.sh`、`touch-light.sh`、`set-server.sh`、`server-settings.sh` 复制到该文件夹。
+3. 将项目中 [`kindle-client/dashboard-extension/`](kindle-client/dashboard-extension/) 目录下的 `config.xml`、`menu.json`、`start.sh`、`stop.sh`、`power.sh`、`touch-light.sh`、`exit-button.sh`、`set-server.sh`、`server-settings.sh` 复制到该文件夹。
 4. 将 [`kindle-client/TRMNL.sh`](kindle-client/TRMNL.sh) 复制到同一文件夹，并重命名为 `dashboard.sh`。
 5. 安全推出 Kindle，打开 KUAL → **Kindle Dashboard** → **Set server address**，输入例如 `192.168.1.20:8080` 的服务器地址并确认，再选择 **Start dashboard**。
 
@@ -95,7 +95,7 @@ docker compose down         # 停止并移除容器
 ### 运行和前光
 
 - **Start dashboard**：启动看板，启动时立即获取图片，随后参照服务端时间在每个整分钟附近请求新图片；网络和绘屏需要额外时间。旧版服务端未提供时间时，退回使用 Kindle 时钟对齐；下载失败时会稍后重试。看板进程意外退出后会尝试重启。
-- **Stop dashboard**：停止看板，恢复启动前的前光亮度和屏保设置。
+- **Stop dashboard**：停止看板，恢复启动前的前光亮度和屏保设置。也可以在 5 秒内连续短按电源键 4 次退出并返回主页（已在 Paperwhite 3 真机验证）。
 - 运行期间会请求阻止自动屏保，并将前光亮度设为 0；触摸屏幕后设为 12，约 30 秒无触摸后恢复为 0。长时间展示建议连接电源。
 - 触摸不会被看板拦截，仍可能触发 Kindle 原有界面。当前触摸设备路径针对上述 Paperwhite 3，其他型号需自行验证。设备重启后需要从 KUAL 再次启动看板。
 
