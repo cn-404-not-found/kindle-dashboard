@@ -1,7 +1,12 @@
 package main
 
 import (
+	"archive/tar"
+	"bytes"
+	"image"
 	"image/color"
+	"image/png"
+	"io"
 	"testing"
 
 	"github.com/fogleman/gg"
@@ -37,5 +42,72 @@ func TestLocalClockLeavesRestOfTopSectionUnchanged(t *testing.T) {
 	}
 	if differences == 0 {
 		t.Fatal("clock area did not change")
+	}
+}
+
+func TestClockTilesRejectsNonMatchingFont(t *testing.T) {
+	f, err := opentype.Parse(goregular.TTF)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := clockTiles(f, f); err == nil {
+		t.Fatal("expected incompatible glyph width to fail")
+	}
+}
+
+func TestClockTilesMatchOriginalClock(t *testing.T) {
+	reg, err := loadSCFont(fontFile)
+	if err != nil {
+		t.Skip("Sarasa TTC unavailable")
+	}
+	bold, err := loadSCFont(boldFontFile)
+	if err != nil {
+		bold = reg
+	}
+	packed, err := clockTiles(reg, bold)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := tar.NewReader(bytes.NewReader(packed))
+	tiles := map[rune]image.Image{}
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		img, err := png.Decode(tr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		key := []rune(hdr.Name)[0]
+		if hdr.Name == "colon.png" {
+			key = ':'
+		}
+		tiles[key] = img
+	}
+	for _, text := range []string{"00:00", "18:58", "23:47"} {
+		dc := gg.NewContext(400, 260)
+		dc.SetColor(color.White)
+		dc.Clear()
+		r := &renderer{dc: dc, reg: reg, bold: bold, faces: make(map[faceKey]font.Face)}
+		r.text(45, baselineFromTop(50+(250-128)/2, 128), text, 128, color.Black, true, 0)
+		for pos, ch := range text {
+			tile := tiles[ch]
+			if tile == nil {
+				t.Fatalf("missing glyph %c", ch)
+			}
+			for y := 0; y < 128; y++ {
+				for x := 0; x < 64; x++ {
+					want := color.GrayModel.Convert(dc.Image().At(45+pos*64+x, 110+y))
+					got := color.GrayModel.Convert(tile.At(x, y))
+					if got != want {
+						t.Fatalf("%s at %d,%d differs", text, 45+pos*64+x, 110+y)
+					}
+				}
+			}
+		}
 	}
 }

@@ -95,7 +95,7 @@ docker compose down         # 停止并移除容器
 ### 运行和前光
 
 - **Start dashboard**：启动看板，启动时立即获取图片，随后按 Kindle 系统时钟在每个整分钟附近请求新图片；网络和绘屏需要额外时间。下载失败时会稍后重试。看板进程意外退出后会尝试重启。
-- **Start offline dashboard**（开发测试版）：每分钟在设备本地重绘时间，约每两小时联网更新天气底图；依赖新版服务端与 Kindle 上的 FBInk。详见[客户端说明](kindle-client/dashboard-extension/README.md)。
+- **Start offline dashboard**（开发测试版）：每分钟在设备本地重绘时间，约每两小时联网更新天气底图；依赖支持数字图块的新版服务端。详见[客户端说明](kindle-client/dashboard-extension/README.md)。
 - **Stop dashboard**：停止看板，恢复启动前的前光亮度和屏保设置。也可以在 5 秒内连续短按电源键 4 次退出并返回主页（已在 Paperwhite 3 真机验证）。
 - 运行期间会请求阻止自动屏保，并将前光亮度设为 0；触摸屏幕后设为 12，约 30 秒无触摸后恢复为 0。长时间展示建议连接电源。
 - 触摸不会被看板拦截，仍可能触发 Kindle 原有界面。当前触摸设备路径针对上述 Paperwhite 3，其他型号需自行验证。设备重启后需要从 KUAL 再次启动看板。

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/tar"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -45,16 +46,36 @@ func TestOfflineFetchTurnsWiFiOffAfterSuccessfulDownload(t *testing.T) {
 	write("lipc-set-prop", "#!/bin/sh\necho \"$3\" >> \"$WIFI_CALLS\"\n")
 	write("wpa_cli", "#!/bin/sh\necho wpa_state=COMPLETED\n")
 	write("ifconfig", "#!/bin/sh\necho 'inet addr:192.0.2.1'\n")
+	f, err := os.Create(filepath.Join(dir, "tiles.tar"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tw := tar.NewWriter(f)
+	for _, name := range []string{"0.png", "1.png", "2.png", "3.png", "4.png", "5.png", "6.png", "7.png", "8.png", "9.png", "colon.png"} {
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0644, Size: 1}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write([]byte("x")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 	write("curl", `#!/bin/sh
+case "$*" in *clock-tiles.tar*) tiles=yes;; esac
 while [ "$#" -gt 0 ]; do
  case "$1" in -D) headers=$2; shift;; -o) body=$2; shift;; esac
  shift
 done
 printf 'HTTP/1.1 200 OK\r\nX-Dashboard-Clock: local\r\n\r\n' > "$headers"
-printf png > "$body"
+if [ "$tiles" = yes ]; then cp "$TEST_TILES" "$body"; else printf png > "$body"; fi
 `)
 	cmd := exec.Command("sh", "kindle-client/dashboard-extension/offline-fetch.sh")
-	cmd.Env = append(os.Environ(), "PATH="+dir+":"+os.Getenv("PATH"), "KINDLE_DASHBOARD_DIR="+dir, "KINDLE_OFFLINE_STATE="+state, "KINDLE_SCREEN_WIDTH=1072", "KINDLE_SCREEN_HEIGHT=1448", "WIFI_CALLS="+calls)
+	cmd.Env = append(os.Environ(), "PATH="+dir+":"+os.Getenv("PATH"), "KINDLE_DASHBOARD_DIR="+dir, "KINDLE_OFFLINE_STATE="+state, "KINDLE_SCREEN_WIDTH=1072", "KINDLE_SCREEN_HEIGHT=1448", "WIFI_CALLS="+calls, "TEST_TILES="+filepath.Join(dir, "tiles.tar"))
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +84,7 @@ printf png > "$body"
 	for time.Now().Before(deadline) {
 		b, _ := os.ReadFile(calls)
 		if strings.Contains(string(b), "1\n0\n") {
-			if _, err := os.Stat(filepath.Join(state, "ready.png")); err != nil {
+			if _, err := os.Stat(filepath.Join(state, "ready")); err != nil {
 				t.Fatal(err)
 			}
 			return

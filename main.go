@@ -483,6 +483,7 @@ func main() {
 	// 根据配置时区偏移构造固定时区（中国默认 UTC+8）；看板时间以配置为准，不受宿主时区影响。
 	appLoc = time.FixedZone(fmt.Sprintf("UTC%+d", cfg.TimezoneOffset), cfg.TimezoneOffset*3600)
 	http.HandleFunc("/screen.png", screenHandler)
+	http.HandleFunc("/clock-tiles.tar", clockTilesHandler)
 	http.HandleFunc("/api/display", apiDisplayHandler)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)

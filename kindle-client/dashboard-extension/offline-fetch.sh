@@ -13,17 +13,22 @@ while :; do
     next_try=$((now + 300))
     url=$(/bin/sh "$DIR/server-settings.sh" --get)
     if [ -n "$url" ] && network_wifi_set 1 && network_wait_connected; then
-      if curl -fsS --connect-timeout 10 --max-time 90 -D "$STATE/headers" -o "$STATE/download" \
+      bundle="$STATE/bundle-$now"
+      mkdir -p "$bundle"
+      if curl -fsS --connect-timeout 10 --max-time 90 -D "$STATE/headers" -o "$bundle/background.png" \
           -H "png-width: ${KINDLE_SCREEN_WIDTH}" -H "png-height: ${KINDLE_SCREEN_HEIGHT}" \
-          "${url}/screen.png?clock=local" && [ -s "$STATE/download" ] &&
-          grep -iq '^X-Dashboard-Clock: local' "$STATE/headers"; then
-        mv "$STATE/download" "$STATE/ready.png" && {
-          last=$(date +%s)
-          last_date=$(date +%Y%m%d)
-          echo "$(date): background updated" >&2
-        }
+          "${url}/screen.png?clock=local" && [ -s "$bundle/background.png" ] &&
+          grep -iq '^X-Dashboard-Clock: local' "$STATE/headers" &&
+          curl -fsS --connect-timeout 10 --max-time 90 -o "$bundle/tiles.tar" "${url}/clock-tiles.tar" &&
+          [ "$(tar -tf "$bundle/tiles.tar" | LC_ALL=C sort)" = "$(printf '%s\n' 0.png 1.png 2.png 3.png 4.png 5.png 6.png 7.png 8.png 9.png colon.png | LC_ALL=C sort)" ] &&
+          tar -xf "$bundle/tiles.tar" -C "$bundle" &&
+          printf '%s\n' "bundle-$now" > "$STATE/ready.tmp" && mv "$STATE/ready.tmp" "$STATE/ready"; then
+        last=$(date +%s)
+        last_date=$(date +%Y%m%d)
+        echo "$(date): background and clock font updated" >&2
       else
         echo "$(date): background download failed or server lacks offline support" >&2
+        rm -rf "$bundle"
       fi
     else
       echo "$(date): Wi-Fi unavailable or server address invalid" >&2
