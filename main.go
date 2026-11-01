@@ -55,9 +55,10 @@ type DashboardData struct {
 	LunarStr         string `json:"lunar_str"` // 农历/节气，如 "六月廿一"
 	ObservedAt       time.Time
 	ForecastAt       time.Time
-	WeatherStatus    string `json:"weather_status"`
-	WeatherAvailable bool   `json:"weather_available"`
-	Location         string `json:"location"` // 城市名，如 "南宁"（图上展示用）
+	WeatherUpdatedAt time.Time `json:"weather_updated_at"`
+	WeatherStatus    string    `json:"weather_status"`
+	WeatherAvailable bool      `json:"weather_available"`
+	Location         string    `json:"location"` // 城市名，如 "南宁"（图上展示用）
 
 	// 实时天气
 	Temp        float64 `json:"temp"`         // 实时温度（℃）
@@ -245,6 +246,7 @@ func fetchDashboardData() DashboardData {
 		WeatherStatus:    status,
 		ObservedAt:       w.observedAt,
 		ForecastAt:       w.forecastAt,
+		WeatherUpdatedAt: w.fetchedAt,
 		WeatherAvailable: ok,
 
 		// --- 实时天气（Open-Meteo 真实数据，失败回退 Mock）---

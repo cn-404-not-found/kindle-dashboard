@@ -8,6 +8,7 @@ import (
 	"image/png"
 	"io"
 	"testing"
+	"time"
 
 	"github.com/fogleman/gg"
 	"golang.org/x/image/font"
@@ -108,6 +109,22 @@ func TestClockTilesMatchOriginalClock(t *testing.T) {
 					}
 				}
 			}
+		}
+	}
+}
+
+func TestWeatherUpdateLabel(t *testing.T) {
+	at := time.Date(2026, 11, 1, 9, 0, 0, 0, time.FixedZone("CST", 8*3600))
+	for _, tc := range []struct {
+		data DashboardData
+		want string
+	}{
+		{DashboardData{}, "天气更新 --"},
+		{DashboardData{WeatherAvailable: true, WeatherUpdatedAt: at}, "天气更新 11-01 09:00"},
+		{DashboardData{WeatherAvailable: true, WeatherUpdatedAt: at, WeatherStatus: "数据未更新"}, "天气未更新 11-01 09:00"},
+	} {
+		if got := weatherUpdateLabel(tc.data); got != tc.want {
+			t.Errorf("got %q, want %q", got, tc.want)
 		}
 	}
 }

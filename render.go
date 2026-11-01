@@ -364,15 +364,26 @@ func drawTopSection(r *renderer, data DashboardData, hideClock bool) {
 		forecastText = "天气暂不可用"
 	}
 	r.fitText(weatherCenter, cardY+184, forecastText, 30, 170, color.Black, true, 0.5)
-	if data.WeatherStatus != "" {
-		r.fitText(cityCenter, cardY+192, data.WeatherStatus, 16, 125, color.Black, true, 0.5)
-	}
+	// 显示服务端最后一次成功获取天气的时间，读取缓存或下载图片不会刷新此时间。
+	r.fitText(cardX+cardW/2, cardY+208, weatherUpdateLabel(data), 20, cardW-20, color.Black, false, 0.5)
 
 	// ---- 分割线（4px 黑线）----
 	r.dc.SetLineWidth(4)
 	r.dc.SetColor(color.Black)
 	r.dc.DrawLine(left, sectionBottom, right, sectionBottom)
 	r.dc.Stroke()
+}
+
+// weatherUpdateLabel 保留日期以区分跨天或较久未更新的天气。
+func weatherUpdateLabel(data DashboardData) string {
+	if !data.WeatherAvailable || data.WeatherUpdatedAt.IsZero() {
+		return "天气更新 --"
+	}
+	label := "天气更新 "
+	if data.WeatherStatus != "" {
+		label = "天气未更新 "
+	}
+	return label + data.WeatherUpdatedAt.Format("01-02 15:04")
 }
 
 // ----------------------------------------------------------------------------

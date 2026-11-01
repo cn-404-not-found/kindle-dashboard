@@ -24,6 +24,7 @@ type weatherResult struct {
 	highTemp, lowTemp      float64
 	forecast               []ForecastItem
 	observedAt, forecastAt time.Time
+	fetchedAt              time.Time
 	forecastDate           time.Time
 }
 
@@ -70,6 +71,7 @@ func cachedWeather(now time.Time) (weatherResult, string, bool) {
 		}
 		return weatherResult{weatherText: "天气暂不可用"}, "天气获取失败", false
 	}
+	w.fetchedAt = now
 	weatherCache.value, weatherCache.updated, weatherCache.valid, weatherCache.failed = w, now, true, false
 	return w, "", true
 }
