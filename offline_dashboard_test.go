@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func TestOfflineClockDrawsOriginalTilesAtFixedPositions(t *testing.T) {
+func TestOfflineClockRestoresCachedTilesAtFixedPositions(t *testing.T) {
 	dir := t.TempDir()
 	state := filepath.Join(dir, "state")
 	bundle := filepath.Join(state, "bundle-1")
@@ -17,7 +17,7 @@ func TestOfflineClockDrawsOriginalTilesAtFixedPositions(t *testing.T) {
 	if err := os.MkdirAll(bundle, 0755); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"ready", "bundle-1/background.png"} {
+	for _, name := range []string{"bundle-1/background.png", "bundle-1/0.png", "bundle-1/1.png", "bundle-1/2.png", "bundle-1/3.png", "bundle-1/4.png", "bundle-1/5.png", "bundle-1/6.png", "bundle-1/7.png", "bundle-1/8.png", "bundle-1/9.png", "bundle-1/colon.png"} {
 		p := filepath.Join(state, name)
 		value := "png"
 		if name == "ready" {

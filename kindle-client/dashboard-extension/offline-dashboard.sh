@@ -20,20 +20,48 @@ trap cleanup TERM INT HUP
 /bin/sh "$DIR/offline-fetch.sh" & worker=$!
 active=
 previous=
+bundle_is_valid() {
+  [ -s "$1/background.png" ] || return 1
+  for glyph in 0 1 2 3 4 5 6 7 8 9 colon; do
+    [ -s "$1/$glyph.png" ] || return 1
+  done
+}
+display_bundle() {
+  candidate=$1
+  bundle_is_valid "$candidate" || return 1
+  old_active=$active
+  eips -c
+  if ! eips -g "$candidate/background.png"; then
+    echo 'Failed to display background'
+    return 1
+  fi
+  active=$candidate
+  printf '%s\n' "${candidate##*/}" > "$STATE/active.tmp" && mv "$STATE/active.tmp" "$STATE/active"
+  case "$old_active" in "$STATE"/bundle-[0-9]*)
+    [ "$old_active" = "$active" ] || rm -rf "$old_active" ;;
+  esac
+  previous=
+}
+# Restore the last complete bundle before waiting for a fresh network request.
+if [ -s "$STATE/active" ]; then
+  saved=$(cat "$STATE/active")
+  case "$saved" in bundle-*[!0-9]*|*[!a-z0-9-]*|'') ;; bundle-*) display_bundle "$STATE/$saved" ;; esac
+fi
+if [ -z "$active" ]; then
+  for candidate in "$STATE"/bundle-*; do
+    [ -d "$candidate" ] && bundle_is_valid "$candidate" && display_bundle "$candidate"
+  done
+fi
+if [ -z "$active" ]; then
+  eips -c
+  eips 0 0 'Connecting to dashboard server...'
+fi
 while :; do
   if [ -s "$STATE/ready" ]; then
     bundle=$(cat "$STATE/ready")
     rm -f "$STATE/ready"
-    case "$bundle" in *[!a-z0-9-]*|'') echo 'Invalid bundle name' ;;
-      bundle-*)
-        if [ -s "$STATE/$bundle/background.png" ]; then
-          old_active=$active
-          active="$STATE/$bundle"
-          eips -c
-          eips -g "$active/background.png" || echo 'Failed to display background'
-          case "$old_active" in "$STATE"/bundle-[0-9]*) rm -rf "$old_active" ;; esac
-          previous=
-        fi ;;
+    case "$bundle" in bundle-*[!0-9]*|*[!a-z0-9-]*|'') echo 'Invalid bundle name' ;;
+      bundle-*) display_bundle "$STATE/$bundle" || echo 'Incomplete dashboard bundle' ;;
     esac
   fi
   if [ -n "$active" ]; then
