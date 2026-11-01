@@ -44,5 +44,5 @@ clock_two_hour_slot() {
 # Clear the top area where Kindle's own status bar can redraw over the image.
 clear_status_bar() {
   fbink=${KINDLE_FBINK:-/mnt/us/libkh/bin/fbink}
-  if [ -x "$fbink" ]; then "$fbink" -q -k top=0,left=0,width=1072,height=48; else return 1; fi
+  if [ -x "$fbink" ]; then "$fbink" -q -k top=0,left=0,width=1072,height=20; else return 1; fi
 }

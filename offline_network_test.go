@@ -72,7 +72,7 @@ while [ "$#" -gt 0 ]; do
  case "$1" in -D) headers=$2; shift;; -o) body=$2; shift;; esac
  shift
 done
-printf 'HTTP/1.1 200 OK\r\nX-Dashboard-Clock: local\r\nX-Dashboard-Timezone-Offset: 8\r\n\r\n' > "$headers"
+printf 'HTTP/1.1 200 OK\r\nX-Dashboard-Clock: local\r\nX-Dashboard-Layout: top-v2\r\nX-Dashboard-Timezone-Offset: 8\r\n\r\n' > "$headers"
 if [ "$tiles" = yes ]; then cp "$TEST_TILES" "$body"; else printf png > "$body"; fi
 `)
 	cmd := exec.Command("sh", "kindle-client/dashboard-extension/offline-fetch.sh")
@@ -85,8 +85,13 @@ if [ "$tiles" = yes ]; then cp "$TEST_TILES" "$body"; else printf png > "$body";
 	for time.Now().Before(deadline) {
 		b, _ := os.ReadFile(calls)
 		if strings.Contains(string(b), "1\n0\n") {
-			if _, err := os.Stat(filepath.Join(state, "ready")); err != nil {
+			ready, err := os.ReadFile(filepath.Join(state, "ready"))
+			if err != nil {
 				t.Fatal(err)
+			}
+			y, err := os.ReadFile(filepath.Join(state, strings.TrimSpace(string(ready)), "clock-y"))
+			if err != nil || strings.TrimSpace(string(y)) != "69" {
+				t.Fatalf("clock position = %q, %v", y, err)
 			}
 			return
 		}

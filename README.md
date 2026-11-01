@@ -90,6 +90,8 @@ docker compose down         # 停止并移除容器
 4. 将 [`kindle-client/TRMNL.sh`](kindle-client/TRMNL.sh) 复制到同一文件夹，并重命名为 `dashboard.sh`。
 5. 安全推出 Kindle，打开 KUAL → **Kindle Dashboard** → **Set server address**，输入例如 `192.168.1.20:8080` 的服务器地址并确认，再选择 **Start offline dashboard**。
 
+升级布局时，请同时更新 Kindle 客户端和服务端；新版服务端会为旧离线客户端保留旧布局，避免时钟错位。
+
 也可输入 `http://` 或 `https://` 开头的地址；不支持 URL 路径、查询参数或 IPv6 字面地址。设置保存在设备本地 `server-url.txt`，运行中修改后通常在下一次刷新生效。升级时保留该文件；升级客户端脚本后先停止再启动看板。详细说明见[客户端说明](kindle-client/dashboard-extension/README.md)。
 
 ### 运行和前光

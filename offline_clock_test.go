@@ -25,7 +25,7 @@ func TestLocalClockLeavesRestOfTopSectionUnchanged(t *testing.T) {
 		dc := gg.NewContext(int(canvasW), int(canvasH))
 		dc.SetColor(color.White)
 		dc.Clear()
-		r := &renderer{dc: dc, reg: f, bold: f, faces: make(map[faceKey]font.Face)}
+		r := &renderer{dc: dc, reg: f, bold: f, faces: make(map[faceKey]font.Face), layoutTop: topSectionY}
 		drawTopSection(r, DashboardData{TimeStr: "10:28", DateStr: "2026年11月1日"}, hide)
 		return dc
 	}
@@ -89,23 +89,26 @@ func TestClockTilesMatchOriginalClock(t *testing.T) {
 		}
 		tiles[key] = img
 	}
-	for _, text := range []string{"00:00", "18:58", "23:47"} {
-		dc := gg.NewContext(400, 260)
-		dc.SetColor(color.White)
-		dc.Clear()
-		r := &renderer{dc: dc, reg: reg, bold: bold, faces: make(map[faceKey]font.Face)}
-		r.text(45, baselineFromTop(50+(250-128)/2, 128), text, 128, color.Black, true, 0)
-		for pos, ch := range text {
-			tile := tiles[ch]
-			if tile == nil {
-				t.Fatalf("missing glyph %c", ch)
-			}
-			for y := 0; y < 128; y++ {
-				for x := 0; x < 64; x++ {
-					want := color.GrayModel.Convert(dc.Image().At(45+pos*64+x, 110+y))
-					got := color.GrayModel.Convert(tile.At(x, y))
-					if got != want {
-						t.Fatalf("%s at %d,%d differs", text, 45+pos*64+x, 110+y)
+	for _, top := range []float64{legacyTopSectionY, topSectionY} {
+		tileY := int(110 + top - legacyTopSectionY)
+		for _, text := range []string{"00:00", "18:58", "23:47"} {
+			dc := gg.NewContext(400, 260)
+			dc.SetColor(color.White)
+			dc.Clear()
+			r := &renderer{dc: dc, reg: reg, bold: bold, faces: make(map[faceKey]font.Face), layoutTop: top}
+			r.text(45, baselineFromTop(top+(250-128)/2, 128), text, 128, color.Black, true, 0)
+			for pos, ch := range text {
+				tile := tiles[ch]
+				if tile == nil {
+					t.Fatalf("missing glyph %c", ch)
+				}
+				for y := 0; y < 128; y++ {
+					for x := 0; x < 64; x++ {
+						want := color.GrayModel.Convert(dc.Image().At(45+pos*64+x, tileY+y))
+						got := color.GrayModel.Convert(tile.At(x, y))
+						if got != want {
+							t.Fatalf("layout %.0f %s at %d,%d differs", top, text, 45+pos*64+x, tileY+y)
+						}
 					}
 				}
 			}
@@ -125,6 +128,21 @@ func TestWeatherUpdateLabel(t *testing.T) {
 	} {
 		if got := weatherUpdateLabel(tc.data); got != tc.want {
 			t.Errorf("got %q, want %q", got, tc.want)
+		}
+	}
+}
+
+func TestDashboardLayoutCompatibility(t *testing.T) {
+	for _, tc := range []struct {
+		local  bool
+		header string
+		want   float64
+	}{
+		{false, "", topSectionY}, {true, "", legacyTopSectionY},
+		{true, "top-v2", topSectionY}, {true, "unknown", legacyTopSectionY},
+	} {
+		if got := dashboardLayoutTop(tc.local, tc.header); got != tc.want {
+			t.Errorf("local=%v header=%q: %v, want %v", tc.local, tc.header, got, tc.want)
 		}
 	}
 }

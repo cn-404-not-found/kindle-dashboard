@@ -93,6 +93,8 @@ while :; do
     esac
   fi
   if [ -n "$active" ]; then
+    clock_y=110
+    if [ -f "$active/clock-y" ] && [ "$(cat "$active/clock-y")" = 69 ]; then clock_y=69; fi
     current=$(TZ="$(clock_tz "$STATE/clock-offset")" date +%H:%M)
     pos=1
     while [ "$pos" -le 5 ]; do
@@ -101,7 +103,7 @@ while :; do
       if [ "$digit" != "$old" ]; then
         [ "$digit" = : ] && digit=colon
         x=$((45 + (pos - 1) * 64))
-        eips -g "$active/$digit.png" -x "$x" -y 110 || echo "Failed to draw clock at $pos"
+        eips -g "$active/$digit.png" -x "$x" -y "$clock_y" || echo "Failed to draw clock at $pos"
       fi
       pos=$((pos + 1))
     done

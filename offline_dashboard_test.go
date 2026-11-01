@@ -10,6 +10,12 @@ import (
 )
 
 func TestOfflineClockRestoresCachedTilesAtFixedPositions(t *testing.T) {
+	for _, y := range []string{"110", "69"} {
+		t.Run(y, func(t *testing.T) { testOfflineClockPosition(t, y) })
+	}
+}
+
+func testOfflineClockPosition(t *testing.T, y string) {
 	dir := t.TempDir()
 	state := filepath.Join(dir, "state")
 	bundle := filepath.Join(state, "bundle-1")
@@ -24,6 +30,11 @@ func TestOfflineClockRestoresCachedTilesAtFixedPositions(t *testing.T) {
 			value = "bundle-1\n"
 		}
 		if err := os.WriteFile(p, []byte(value), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if y == "69" {
+		if err := os.WriteFile(filepath.Join(bundle, "clock-y"), []byte("69\n"), 0644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -48,8 +59,8 @@ func TestOfflineClockRestoresCachedTilesAtFixedPositions(t *testing.T) {
 	for time.Now().Before(deadline) {
 		b, _ := os.ReadFile(log)
 		s := string(b)
-		if strings.Contains(s, "5.png -x 237 -y 110") && strings.Contains(s, "8.png -x 301 -y 110") {
-			if !strings.Contains(s, "colon.png -x 173 -y 110") {
+		if strings.Contains(s, "5.png -x 237 -y "+y) && strings.Contains(s, "8.png -x 301 -y "+y) {
+			if !strings.Contains(s, "colon.png -x 173 -y "+y) {
 				t.Fatal(s)
 			}
 			return

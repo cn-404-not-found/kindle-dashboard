@@ -39,10 +39,12 @@ import (
 // 画布常量（与 CSS 中的 body / padding 一一对应）
 // ----------------------------------------------------------------------------
 const (
-	canvasW = 1072.0 // Kindle Paperwhite 3 物理宽度
-	canvasH = 1448.0 // Kindle Paperwhite 3 物理高度
-	padX    = 45.0   // body padding-left/right
-	padY    = 50.0   // body padding-top/bottom
+	canvasW           = 1072.0 // Kindle Paperwhite 3 物理宽度
+	canvasH           = 1448.0 // Kindle Paperwhite 3 物理高度
+	padX              = 45.0   // body padding-left/right
+	padY              = 50.0   // 画布底部留白
+	topSectionY       = 9.0    // 天气卡片上沿距画布 24px
+	legacyTopSectionY = 50.0   // 旧离线客户端的时钟位置
 
 	fontFile     = "Sarasa-Regular.ttc" // 默认字体（常规字重；更纱官方 TTC 包内文件名，无需改名）
 	boldFontFile = "Sarasa-Bold.ttc"    // 可选：存在则用真实 Bold 字重，否则回退偏移模拟
@@ -53,10 +55,11 @@ const (
 
 // renderer 封装绘制上下文、TTC 内选出的简体常规/粗体字形，以及按 (字号,粗体) 缓存的字体面。
 type renderer struct {
-	dc    *gg.Context
-	reg   *sfnt.Font // 常规字重（简体子变体）
-	bold  *sfnt.Font // 粗体字重；与 reg 相同表示无独立粗体，回退偏移模拟
-	faces map[faceKey]font.Face
+	dc        *gg.Context
+	reg       *sfnt.Font // 常规字重（简体子变体）
+	bold      *sfnt.Font // 粗体字重；与 reg 相同表示无独立粗体，回退偏移模拟
+	faces     map[faceKey]font.Face
+	layoutTop float64
 }
 
 // faceKey 同时区分字号与是否粗体，避免不同字重的面互相覆盖。
@@ -183,6 +186,10 @@ func RenderDashboard(data DashboardData) ([]byte, error) {
 
 // renderDashboard 可保留时间位置以供客户端离线绘制。
 func renderDashboard(data DashboardData, hideClock bool) ([]byte, error) {
+	return renderDashboardWithTop(data, hideClock, topSectionY)
+}
+
+func renderDashboardWithTop(data DashboardData, hideClock bool, layoutTop float64) ([]byte, error) {
 	// 1. 加载中文字体。更纱 TTC 每个文件仅含单一字重，但内含 SC/TC/J/K/HC 全部正字法，
 	//    故常规、粗体分两个文件加载，再各自选出简体(SC)子变体（优先字体风格 fontStyle）。
 	regFont, err := loadSCFont(fontFile)
@@ -202,10 +209,11 @@ func renderDashboard(data DashboardData, hideClock bool) ([]byte, error) {
 	dc.Fill()
 
 	r := &renderer{
-		dc:    dc,
-		reg:   regFont,
-		bold:  boldFont,
-		faces: make(map[faceKey]font.Face),
+		dc:        dc,
+		reg:       regFont,
+		bold:      boldFont,
+		faces:     make(map[faceKey]font.Face),
+		layoutTop: layoutTop,
 	}
 
 	// 3. 绘制三区并编码 PNG。字体面创建失败属编程不变量，用 recover 收敛为 error。
@@ -300,9 +308,9 @@ func parseDate(s string) time.Time {
 func drawTopSection(r *renderer, data DashboardData, hideClock bool) {
 	left := padX
 	right := canvasW - padX
-	sectionTop := padY                     // 50
-	sectionH := 250.0                      // CSS .top-section height
-	sectionBottom := sectionTop + sectionH // 300
+	sectionTop := r.layoutTop
+	sectionH := 250.0 // CSS .top-section height
+	sectionBottom := sectionTop + sectionH
 
 	// ---- 左侧：大号时间（纵居中）----
 	const timeSize = 128.0
@@ -365,7 +373,7 @@ func drawTopSection(r *renderer, data DashboardData, hideClock bool) {
 	}
 	r.fitText(weatherCenter, cardY+184, forecastText, 30, 170, color.Black, true, 0.5)
 	// 显示服务端最后一次成功获取天气的时间，读取缓存或下载图片不会刷新此时间。
-	r.fitText(cardX+cardW/2, cardY+208, weatherUpdateLabel(data), 24, cardW-20, color.Gray{Y: 85}, false, 0.5)
+	r.fitText(cardX+cardW/2, cardY+212, weatherUpdateLabel(data), 24, cardW-20, color.Gray{Y: 85}, false, 0.5)
 
 	// ---- 分割线（4px 黑线）----
 	r.dc.SetLineWidth(4)
@@ -391,7 +399,7 @@ func weatherUpdateLabel(data DashboardData) string {
 // ----------------------------------------------------------------------------
 
 func drawForecast(r *renderer, data DashboardData, baseDate time.Time) {
-	sectionTop := padY + 250 + 30 // 顶部区底(300) + margin-top 30 = 330
+	sectionTop := r.layoutTop + 250 + 30 // 与顶部分隔线保持 30px 的间距
 	gap := 15.0
 	contentW := canvasW - 2*padX
 	cols := 5
@@ -450,7 +458,7 @@ func drawCalendar(r *renderer, data DashboardData, baseDate time.Time) {
 	right := canvasW - padX
 	contentW := canvasW - 2*padX
 
-	sectionTop := padY + 250 + 30 + 156 + 35 // 预报区底(486) + margin-top 35 = 521
+	sectionTop := r.layoutTop + 250 + 30 + 156 + 35 // 预报区后保留 35px 间距
 
 	// ---- 月标题（40px 居中，粗体）----
 	year, month, _ := baseDate.Date()

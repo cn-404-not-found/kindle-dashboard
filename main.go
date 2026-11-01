@@ -349,13 +349,22 @@ func buildMonthGrid(now time.Time) [6][7]CalendarCell {
 // HTTP 接口实现
 // ----------------------------------------------------------------------------
 
+// dashboardLayoutTop 保持旧离线客户端的时钟坐标，新客户端显式启用新布局。
+func dashboardLayoutTop(localClock bool, requestedLayout string) float64 {
+	if localClock && requestedLayout != "top-v2" {
+		return legacyTopSectionY
+	}
+	return topSectionY
+}
+
 // screenHandler 处理 GET /screen.png：
 // 每次请求动态获取数据 → 调用 RenderDashboard 生成 PNG → 直接返回字节流。
 func screenHandler(w http.ResponseWriter, r *http.Request) {
 	data := fetchDashboardData()
 
 	localClock := r.URL.Query().Get("clock") == "local"
-	pngBytes, err := renderDashboard(data, localClock)
+	layoutTop := dashboardLayoutTop(localClock, r.Header.Get("X-Dashboard-Layout"))
+	pngBytes, err := renderDashboardWithTop(data, localClock, layoutTop)
 	if err != nil {
 		http.Error(w, "render failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -388,6 +397,9 @@ func screenHandler(w http.ResponseWriter, r *http.Request) {
 
 	if localClock {
 		w.Header().Set("X-Dashboard-Clock", "local")
+		if layoutTop == topSectionY {
+			w.Header().Set("X-Dashboard-Layout", "top-v2")
+		}
 		w.Header().Set("X-Dashboard-Timezone-Offset", strconv.Itoa(cfg.TimezoneOffset))
 	}
 	w.Header().Set("Content-Type", "image/png")
