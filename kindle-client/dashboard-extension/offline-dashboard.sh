@@ -13,10 +13,31 @@ cleanup() {
   trap '' TERM INT HUP
   [ -n "$worker" ] && kill "$worker" 2>/dev/null
   [ -n "$worker" ] && wait "$worker" 2>/dev/null
+  [ -n "$wm_pid" ] && kill -CONT "$wm_pid" 2>/dev/null
+  [ -n "$ui_guard" ] && kill "$ui_guard" 2>/dev/null
+  [ -n "$ui_guard" ] && wait "$ui_guard" 2>/dev/null
   network_wifi_set "$initial_wifi" || echo 'Could not restore original Wi-Fi setting'
   exit 0
 }
 trap cleanup TERM INT HUP
+# Pause only the window manager, not networking; a separate guard resumes it if
+# this process is killed unexpectedly. Raw power-button input remains active.
+wm_pid=$(ps | awk '$NF == "awesome" {print $1; exit}')
+case "$wm_pid" in
+  ''|*[!0-9]*) wm_pid= ;;
+  *)
+    if cp "$DIR/offline-ui-guard.sh" "$STATE/ui-guard.sh"; then
+      /bin/sh "$STATE/ui-guard.sh" "$$" "$wm_pid" & ui_guard=$!
+      if ! kill -STOP "$wm_pid" 2>/dev/null; then
+        kill "$ui_guard" 2>/dev/null; wait "$ui_guard" 2>/dev/null
+        ui_guard=; wm_pid=
+        echo 'Unable to pause window manager'
+      fi
+    else
+      wm_pid=
+      echo 'Unable to start window manager recovery guard'
+    fi ;;
+esac
 /bin/sh "$DIR/offline-fetch.sh" & worker=$!
 active=
 previous=
