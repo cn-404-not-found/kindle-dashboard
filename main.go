@@ -386,6 +386,7 @@ func screenHandler(w http.ResponseWriter, r *http.Request) {
 
 	if localClock {
 		w.Header().Set("X-Dashboard-Clock", "local")
+		w.Header().Set("X-Dashboard-Timezone-Offset", strconv.Itoa(cfg.TimezoneOffset))
 	}
 	w.Header().Set("Content-Type", "image/png")
 	// 墨水屏设备通常会缓存图片，禁用缓存以保证每次拉取最新画面。

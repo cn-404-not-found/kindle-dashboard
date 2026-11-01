@@ -21,3 +21,17 @@ network_wait_connected() {
   done
   return 1
 }
+
+# Convert UTC offset to POSIX TZ syntax (the sign is intentionally reversed).
+clock_tz() {
+  offset=8
+  [ -r "$1" ] && offset=$(cat "$1")
+  case "$offset" in ''|*[!0-9-]*|--*|*--*|*-?*-) offset=8 ;; esac
+  if ! [ "$offset" -ge -12 ] 2>/dev/null || ! [ "$offset" -le 14 ] 2>/dev/null; then offset=8; fi
+  if [ "$offset" -ge 0 ]; then printf 'UTC-%s\n' "$offset"; else printf 'UTC+%s\n' "${offset#-}"; fi
+}
+# Clear the top area where Kindle's own status bar can redraw over the image.
+clear_status_bar() {
+  fbink=${KINDLE_FBINK:-/mnt/us/libkh/bin/fbink}
+  if [ -x "$fbink" ]; then "$fbink" -q -k top=0,left=0,width=1072,height=48; else return 1; fi
+}

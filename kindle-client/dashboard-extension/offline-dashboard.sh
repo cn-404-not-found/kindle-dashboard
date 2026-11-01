@@ -36,6 +36,9 @@ display_bundle() {
     return 1
   fi
   active=$candidate
+  if [ -s "$active/timezone" ]; then
+    cp "$active/timezone" "$STATE/clock-offset"
+  fi
   printf '%s\n' "${candidate##*/}" > "$STATE/active.tmp" && mv "$STATE/active.tmp" "$STATE/active"
   case "$old_active" in "$STATE"/bundle-[0-9]*)
     [ "$old_active" = "$active" ] || rm -rf "$old_active" ;;
@@ -65,7 +68,7 @@ while :; do
     esac
   fi
   if [ -n "$active" ]; then
-    current=$(date +%H:%M)
+    current=$(TZ="$(clock_tz "$STATE/clock-offset")" date +%H:%M)
     pos=1
     while [ "$pos" -le 5 ]; do
       digit=$(printf '%s' "$current" | cut -c "$pos")
@@ -78,6 +81,7 @@ while :; do
       pos=$((pos + 1))
     done
     previous=$current
+    clear_status_bar || echo 'Could not clear status bar'
   fi
   now=$(date +%s)
   delay=$((60 - now % 60))

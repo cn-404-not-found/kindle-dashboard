@@ -71,7 +71,7 @@ while [ "$#" -gt 0 ]; do
  case "$1" in -D) headers=$2; shift;; -o) body=$2; shift;; esac
  shift
 done
-printf 'HTTP/1.1 200 OK\r\nX-Dashboard-Clock: local\r\n\r\n' > "$headers"
+printf 'HTTP/1.1 200 OK\r\nX-Dashboard-Clock: local\r\nX-Dashboard-Timezone-Offset: 8\r\n\r\n' > "$headers"
 if [ "$tiles" = yes ]; then cp "$TEST_TILES" "$body"; else printf png > "$body"; fi
 `)
 	cmd := exec.Command("sh", "kindle-client/dashboard-extension/offline-fetch.sh")
@@ -102,4 +102,19 @@ func mustReadTestFile(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return string(b)
+}
+
+func TestClockTimezoneFollowsServerOffset(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "offset")
+	for _, tc := range []struct{ value, want string }{{"8", "UTC-8"}, {"-5", "UTC+5"}, {"0", "UTC-0"}, {"99", "UTC-8"}, {"bad", "UTC-8"}} {
+		if err := os.WriteFile(path, []byte(tc.value), 0600); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command("sh", "-c", `. ./kindle-client/dashboard-extension/offline-network.sh; clock_tz "$1"`, "sh", path)
+		out, err := cmd.Output()
+		if err != nil || strings.TrimSpace(string(out)) != tc.want {
+			t.Errorf("%q: got %q, %v", tc.value, out, err)
+		}
+	}
 }
