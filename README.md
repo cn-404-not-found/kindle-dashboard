@@ -88,13 +88,13 @@ docker compose down         # 停止并移除容器
 2. 用 USB 将 Kindle 连接电脑，打开 Kindle 存储盘，在 `extensions` 下新建 `kindle-dashboard` 文件夹。
 3. 将项目中 [`kindle-client/dashboard-extension/`](kindle-client/dashboard-extension/) 目录下的 `config.xml`、`menu.json`、`start.sh`、`stop.sh`、`power.sh`、`touch-light.sh`、`exit-button.sh`、`start-offline.sh`、`offline-dashboard.sh`、`offline-fetch.sh`、`offline-network.sh`、`offline-ui-guard.sh`、`set-server.sh`、`server-settings.sh` 复制到该文件夹。
 4. 将 [`kindle-client/TRMNL.sh`](kindle-client/TRMNL.sh) 复制到同一文件夹，并重命名为 `dashboard.sh`。
-5. 安全推出 Kindle，打开 KUAL → **Kindle Dashboard** → **Set server address**，输入例如 `192.168.1.20:8080` 的服务器地址并确认，再选择 **Start dashboard**。
+5. 安全推出 Kindle，打开 KUAL → **Kindle Dashboard** → **Set server address**，输入例如 `192.168.1.20:8080` 的服务器地址并确认，再选择 **Start offline dashboard**。
 
 也可输入 `http://` 或 `https://` 开头的地址；不支持 URL 路径、查询参数或 IPv6 字面地址。设置保存在设备本地 `server-url.txt`，运行中修改后通常在下一次刷新生效。升级时保留该文件；升级客户端脚本后先停止再启动看板。详细说明见[客户端说明](kindle-client/dashboard-extension/README.md)。
 
 ### 运行和前光
 
-- **Start dashboard**：启动省电模式，Kindle 本地每分钟重绘时间，在当地时间 0、2、4 点等整点联网更新天气底图；需要新版服务端。
+- **Start offline dashboard**：启动省电模式，Kindle 本地每分钟重绘时间，在当地时间 0、2、4 点等整点联网更新天气底图；需要新版服务端。
 - **Start online dashboard**：启动原在线模式，每分钟从服务端获取完整看板。
 - **Stop dashboard**：停止看板，恢复启动前的前光亮度和屏保设置。也可以在 5 秒内连续短按电源键 4 次退出并返回主页（已在 Paperwhite 3 真机验证）。
 - 运行期间会请求阻止自动屏保，并将前光亮度设为 0；触摸屏幕后设为 12，约 30 秒无触摸后恢复为 0。长时间展示建议连接电源。
