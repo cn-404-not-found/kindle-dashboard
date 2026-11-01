@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -115,6 +116,37 @@ func TestClockTimezoneFollowsServerOffset(t *testing.T) {
 		out, err := cmd.Output()
 		if err != nil || strings.TrimSpace(string(out)) != tc.want {
 			t.Errorf("%q: got %q, %v", tc.value, out, err)
+		}
+	}
+}
+
+func TestTwoHourSlotsAlignToLocalEvenHours(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "offset")
+	for _, tc := range []struct {
+		offset string
+		local  time.Time
+		same   bool
+	}{
+		{"8", time.Date(2026, 11, 1, 1, 59, 59, 0, time.FixedZone("CST", 8*3600)), false},
+		{"8", time.Date(2026, 11, 1, 2, 0, 0, 0, time.FixedZone("CST", 8*3600)), true},
+		{"-5", time.Date(2026, 11, 1, 2, 0, 0, 0, time.FixedZone("EST", -5*3600)), true},
+	} {
+		if err := os.WriteFile(path, []byte(tc.offset), 0600); err != nil {
+			t.Fatal(err)
+		}
+		slot := func(at time.Time) string {
+			t.Helper()
+			out, err := exec.Command("sh", "-c", `. ./kindle-client/dashboard-extension/offline-network.sh; clock_two_hour_slot "$1" "$2"`, "sh", strconv.FormatInt(at.Unix(), 10), path).Output()
+			if err != nil {
+				t.Fatal(err)
+			}
+			return strings.TrimSpace(string(out))
+		}
+		previous := slot(tc.local.Add(-time.Second))
+		current := slot(tc.local)
+		if (previous != current) != tc.same {
+			t.Errorf("%s: previous=%s current=%s, expected boundary=%v", tc.local, previous, current, tc.same)
 		}
 	}
 }

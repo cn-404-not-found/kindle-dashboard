@@ -3,15 +3,15 @@ DIR=${KINDLE_DASHBOARD_DIR:-/mnt/us/extensions/kindle-dashboard}
 STATE=${KINDLE_OFFLINE_STATE:-/tmp/kindle-dashboard-offline}
 . "$DIR/offline-network.sh" || exit 1
 mkdir -p "$STATE" || exit 1
-last=0
-last_date=
+last_slot=
+last_url=
 next_try=0
 while :; do
   now=$(date +%s)
-  today=$(TZ="$(clock_tz "$STATE/clock-offset")" date +%Y%m%d)
-  if [ "$now" -ge "$next_try" ] && { [ "$last" -eq 0 ] || [ $((now-last)) -ge 7200 ] || [ "$today" != "$last_date" ] || [ "$now" -lt "$last" ]; }; then
+  slot=$(clock_two_hour_slot "$now" "$STATE/clock-offset")
+  url=$(/bin/sh "$DIR/server-settings.sh" --get)
+  if [ "$now" -ge "$next_try" ] && { [ "$slot" != "$last_slot" ] || [ "$url" != "$last_url" ]; }; then
     next_try=$((now + 300))
-    url=$(/bin/sh "$DIR/server-settings.sh" --get)
     if [ -n "$url" ] && network_wifi_set 1 && network_wait_connected; then
       bundle="$STATE/bundle-$now"
       mkdir -p "$bundle"
@@ -24,8 +24,10 @@ while :; do
           tar -xf "$bundle/tiles.tar" -C "$bundle" &&
           awk 'tolower($1)=="x-dashboard-timezone-offset:" {gsub("\r", "", $2); print $2; exit}' "$STATE/headers" > "$bundle/timezone" &&
           printf '%s\n' "bundle-$now" > "$STATE/ready.tmp" && mv "$STATE/ready.tmp" "$STATE/ready"; then
-        last=$(date +%s)
-        last_date=$(TZ="$(clock_tz "$bundle/timezone")" date +%Y%m%d)
+        last_slot=$(clock_two_hour_slot "$(date +%s)" "$bundle/timezone")
+        last_url=$url
+        next_try=0
+        case "${KINDLE_OFFLINE_DISPLAY_PID:-}" in ''|*[!0-9]*) ;; *) kill -USR1 "$KINDLE_OFFLINE_DISPLAY_PID" 2>/dev/null ;; esac
         echo "$(date): background and clock font updated" >&2
       else
         echo "$(date): background download failed or server lacks offline support" >&2
@@ -38,5 +40,6 @@ while :; do
     sleep 2
     clear_status_bar || echo "$(date): could not clear status bar" >&2
   fi
-  sleep 30 & wait $!
+  now=$(date +%s)
+  sleep $((30 - now % 30)) & wait $!
 done

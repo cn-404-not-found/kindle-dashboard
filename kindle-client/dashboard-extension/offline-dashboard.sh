@@ -20,6 +20,10 @@ cleanup() {
   exit 0
 }
 trap cleanup TERM INT HUP
+# A finished download interrupts the minute wait so the new image appears promptly.
+trap : USR1
+KINDLE_OFFLINE_DISPLAY_PID=$$
+export KINDLE_OFFLINE_DISPLAY_PID
 # Pause only the window manager, not networking; a separate guard resumes it if
 # this process is killed unexpectedly. Raw power-button input remains active.
 wm_pid=$(ps | awk '$NF == "awesome" {print $1; exit}')
@@ -106,5 +110,7 @@ while :; do
   fi
   now=$(date +%s)
   delay=$((60 - now % 60))
-  sleep "$delay" & wait $!
+  sleep "$delay" & sleeper=$!
+  wait "$sleeper"
+  kill "$sleeper" 2>/dev/null
 done
