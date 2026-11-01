@@ -34,7 +34,7 @@ trap cleanup TERM INT HUP
 /bin/sh "$DIR/touch-light.sh" "$TOUCH" "$STATE" >> "$LOG" 2>&1 & watcher=$!
 /bin/sh "$DIR/exit-button.sh" "$$" >> "$LOG" 2>&1 & button=$!
 while :; do
-  /bin/sh "$DIR/dashboard.sh" >> "$LOG" 2>&1 & dashboard=$!
+  /bin/sh "$DIR/${KINDLE_DASHBOARD_PROGRAM:-dashboard.sh}" >> "$LOG" 2>&1 & dashboard=$!
   wait "$dashboard"
   dashboard=
   echo 'Dashboard exited; restarting in 5 seconds.' >> "$LOG"

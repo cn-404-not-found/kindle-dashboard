@@ -178,6 +178,11 @@ func selectSC(col *sfnt.Collection, stylePref string) *sfnt.Font {
 // 常规/粗体字体 TTC 必须与可执行文件同目录；缺失或损坏时返回 error。
 // 若仅提供常规字体(无粗体文件)，粗体回退为「偏移叠绘」模拟。
 func RenderDashboard(data DashboardData) ([]byte, error) {
+	return renderDashboard(data, false)
+}
+
+// renderDashboard 可保留时间位置以供客户端离线绘制。
+func renderDashboard(data DashboardData, hideClock bool) ([]byte, error) {
 	// 1. 加载中文字体。更纱 TTC 每个文件仅含单一字重，但内含 SC/TC/J/K/HC 全部正字法，
 	//    故常规、粗体分两个文件加载，再各自选出简体(SC)子变体（优先字体风格 fontStyle）。
 	regFont, err := loadSCFont(fontFile)
@@ -215,7 +220,7 @@ func RenderDashboard(data DashboardData) ([]byte, error) {
 				renderErr = fmt.Errorf("渲染看板失败: %v", rec)
 			}
 		}()
-		drawTopSection(r, data)
+		drawTopSection(r, data, hideClock)
 		drawForecast(r, data, baseDate)
 		drawCalendar(r, data, baseDate)
 
@@ -292,7 +297,7 @@ func parseDate(s string) time.Time {
 // 1. 顶部核心区：时间 + 日期（左） / 圆角天气卡片（右） / 分割线
 // ----------------------------------------------------------------------------
 
-func drawTopSection(r *renderer, data DashboardData) {
+func drawTopSection(r *renderer, data DashboardData, hideClock bool) {
 	left := padX
 	right := canvasW - padX
 	sectionTop := padY                     // 50
@@ -302,7 +307,9 @@ func drawTopSection(r *renderer, data DashboardData) {
 	// ---- 左侧：大号时间（纵居中）----
 	const timeSize = 128.0
 	timeBaseline := baselineFromTop(sectionTop+(sectionH-timeSize)/2, timeSize)
-	r.text(left, timeBaseline, data.TimeStr, timeSize, color.Black, true, 0)
+	if !hideClock {
+		r.text(left, timeBaseline, data.TimeStr, timeSize, color.Black, true, 0)
+	}
 
 	// ---- 时间右侧：日期 + 农历（纵居中堆叠，在时间与天气卡片之间居中）----
 	const (

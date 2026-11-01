@@ -352,7 +352,8 @@ func buildMonthGrid(now time.Time) [6][7]CalendarCell {
 func screenHandler(w http.ResponseWriter, r *http.Request) {
 	data := fetchDashboardData()
 
-	pngBytes, err := RenderDashboard(data)
+	localClock := r.URL.Query().Get("clock") == "local"
+	pngBytes, err := renderDashboard(data, localClock)
 	if err != nil {
 		http.Error(w, "render failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -383,6 +384,9 @@ func screenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if localClock {
+		w.Header().Set("X-Dashboard-Clock", "local")
+	}
 	w.Header().Set("Content-Type", "image/png")
 	// 墨水屏设备通常会缓存图片，禁用缓存以保证每次拉取最新画面。
 	w.Header().Set("Cache-Control", "no-store")
