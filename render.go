@@ -365,7 +365,7 @@ func drawTopSection(r *renderer, data DashboardData, hideClock bool) {
 	}
 	r.fitText(weatherCenter, cardY+184, forecastText, 30, 170, color.Black, true, 0.5)
 	// 显示服务端最后一次成功获取天气的时间，读取缓存或下载图片不会刷新此时间。
-	r.fitText(cardX+cardW/2, cardY+208, weatherUpdateLabel(data), 20, cardW-20, color.Black, false, 0.5)
+	r.fitText(cardX+cardW/2, cardY+208, weatherUpdateLabel(data), 24, cardW-20, color.Gray{Y: 85}, false, 0.5)
 
 	// ---- 分割线（4px 黑线）----
 	r.dc.SetLineWidth(4)
