@@ -49,6 +49,7 @@ type CalendarCell struct {
 
 // DashboardData 是所有看板数据的聚合根，作为 RenderDashboard 的输入。
 type DashboardData struct {
+	Humidity, Air, Wind, Ultraviolet string
 	// 时间与日期
 	TimeStr          string `json:"time_str"`  // 当前时间，如 "10:43"
 	DateStr          string `json:"date_str"`  // 当前日期，如 "2026年08月03日"
@@ -239,10 +240,11 @@ func fetchDashboardData() DashboardData {
 
 	return DashboardData{
 		// --- 时间相关 ---
-		TimeStr:          timeStr,
-		DateStr:          dateStr,
-		LunarStr:         lunarMonthDay(now.Year(), int(now.Month()), now.Day()), // 真实农历（月+日）
-		Location:         cfg.CityName,
+		TimeStr:  timeStr,
+		DateStr:  dateStr,
+		LunarStr: lunarMonthDay(now.Year(), int(now.Month()), now.Day()), // 真实农历（月+日）
+		Location: cfg.CityName,
+		Humidity: w.humidity, Air: w.air, Wind: w.wind, Ultraviolet: w.ultraviolet,
 		WeatherStatus:    status,
 		ObservedAt:       w.observedAt,
 		ForecastAt:       w.forecastAt,
@@ -363,8 +365,9 @@ func screenHandler(w http.ResponseWriter, r *http.Request) {
 	data := fetchDashboardData()
 
 	localClock := r.URL.Query().Get("clock") == "local"
+	noClock := r.URL.Query().Get("clock") == "none"
 	layoutTop := dashboardLayoutTop(localClock, r.Header.Get("X-Dashboard-Layout"))
-	pngBytes, err := renderDashboardWithTop(data, localClock, layoutTop)
+	pngBytes, err := renderDashboardMode(data, localClock, noClock, layoutTop)
 	if err != nil {
 		http.Error(w, "render failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -395,6 +398,10 @@ func screenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if noClock {
+		w.Header().Set("X-Dashboard-Clock", "none")
+		w.Header().Set("X-Dashboard-Timezone-Offset", strconv.Itoa(cfg.TimezoneOffset))
+	}
 	if localClock {
 		w.Header().Set("X-Dashboard-Clock", "local")
 		if layoutTop == topSectionY {

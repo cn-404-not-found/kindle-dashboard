@@ -70,3 +70,46 @@ func testOfflineClockPosition(t *testing.T, y string) {
 	b, _ := os.ReadFile(log)
 	t.Fatalf("missing clock tiles: %s", b)
 }
+
+func TestNoClockRestoresBackgroundWithoutClockTiles(t *testing.T) {
+	dir := t.TempDir()
+	state := filepath.Join(dir, "state")
+	bundle := filepath.Join(state, "bundle-1")
+	log := filepath.Join(dir, "draws")
+	if err := os.MkdirAll(bundle, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bundle, "background.png"), []byte("png"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	write := func(name, content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("offline-network.sh", mustReadTestFile(t, "kindle-client/dashboard-extension/offline-network.sh"))
+	write("offline-fetch.sh", "#!/bin/sh\nsleep 30 & wait $!\n")
+	write("lipc-get-prop", "#!/bin/sh\necho 1\n")
+	write("lipc-set-prop", "#!/bin/sh\nexit 0\n")
+	write("eips", "#!/bin/sh\nif [ \"$1\" = -i ]; then echo 'xres: 1072 yres: 1448'; else echo \"$*\" >> \"$DRAW_LOG\"; fi\n")
+	cmd := exec.Command("sh", "kindle-client/dashboard-extension/offline-dashboard.sh")
+	cmd.Env = append(os.Environ(), "PATH="+dir+":"+os.Getenv("PATH"), "KINDLE_DASHBOARD_DIR="+dir, "KINDLE_OFFLINE_STATE="+state, "KINDLE_CLOCK_MODE=none", "DRAW_LOG="+log)
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = cmd.Process.Signal(os.Interrupt); _ = cmd.Wait() }()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		b, _ := os.ReadFile(log)
+		if strings.Contains(string(b), "background.png") {
+			if strings.Contains(string(b), " -x ") {
+				t.Fatal(string(b))
+			}
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	b, _ := os.ReadFile(log)
+	t.Fatalf("missing background: %s", b)
+}

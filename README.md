@@ -86,7 +86,7 @@ docker compose down         # 停止并移除容器
 
 1. 从 GitHub 仓库下载项目（页面上选择 **Code → Download ZIP**）并解压。
 2. 用 USB 将 Kindle 连接电脑，打开 Kindle 存储盘，在 `extensions` 下新建 `kindle-dashboard` 文件夹。
-3. 将项目中 [`kindle-client/dashboard-extension/`](kindle-client/dashboard-extension/) 目录下的 `config.xml`、`menu.json`、`start.sh`、`stop.sh`、`power.sh`、`touch-light.sh`、`exit-button.sh`、`start-offline.sh`、`offline-dashboard.sh`、`offline-fetch.sh`、`offline-network.sh`、`offline-ui-guard.sh`、`set-server.sh`、`server-settings.sh` 复制到该文件夹。
+3. 将项目中 [`kindle-client/dashboard-extension/`](kindle-client/dashboard-extension/) 目录下的 `config.xml`、`menu.json`、`start.sh`、`stop.sh`、`power.sh`、`touch-light.sh`、`exit-button.sh`、`start-offline.sh`、`start-no-clock.sh`、`offline-dashboard.sh`、`offline-fetch.sh`、`offline-network.sh`、`offline-ui-guard.sh`、`set-server.sh`、`server-settings.sh` 复制到该文件夹。
 4. 将 [`kindle-client/TRMNL.sh`](kindle-client/TRMNL.sh) 复制到同一文件夹，并重命名为 `dashboard.sh`。
 5. 安全推出 Kindle，打开 KUAL → **Kindle Dashboard** → **Set server address**，输入例如 `192.168.1.20:8080` 的服务器地址并确认，再选择 **Start offline dashboard**。
 
@@ -128,3 +128,11 @@ go run .
 - 已在 Paperwhite 3 上验证灰度显示、本地时间、触摸前光和退出；两小时自动重连及长期连续运行尚未完成实机测试，其他型号和固件未全面测试。
 - 网络工具尚未在无 DHCP 环境中完成验证；切换网络设置可能暂时断开连接。
 - 本项目目前没有声明开源许可证；使用及再分发权限以仓库所有者后续提供的许可为准。
+
+### 无时钟天气详情模式（测试分支）
+
+KUAL 中选择 **Start dashboard with clock** 使用本地分钟时钟；选择 **Start dashboard without clock** 使用无时钟天气详情版面。两者启动时和本地时间 0、2、4 等偶数整点获取完整看板，失败后会重试；选择 **Stop dashboard** 停止，切换模式请先停止。原在线模式仍保留。
+
+无时钟请求使用 `/screen.png?clock=none`，新服务端返回 `X-Dashboard-Clock: none`；客户端校验该标记，避免旧服务器误显示有时钟的画面。数据缺失时对应栏目显示 `--`。湿度、风、空气质量数值来自天气网页实况，紫外线为页面生活指数；各项可能有不同发布时间，获取时间不等于观测时间。
+
+测试分支镜像为 `ghcr.io/cn-404-not-found/kindle-dashboard:no-clock-preview`，不会覆盖正式 `latest`。无时钟仅减少绘图工作，不代表设备已进入系统休眠，实际节电效果须测量。

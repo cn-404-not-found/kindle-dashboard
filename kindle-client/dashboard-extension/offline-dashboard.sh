@@ -1,7 +1,10 @@
 #!/bin/sh
 # Independent offline client: images update in the background, clock locally.
 DIR=${KINDLE_DASHBOARD_DIR:-/mnt/us/extensions/kindle-dashboard}
-STATE=${KINDLE_OFFLINE_STATE:-/tmp/kindle-dashboard-offline}
+MODE=${KINDLE_CLOCK_MODE:-local}
+case "$MODE" in local|none) ;; *) exit 1 ;; esac
+if [ "$MODE" = none ]; then STATE=${KINDLE_OFFLINE_STATE:-/tmp/kindle-dashboard-no-clock}; else STATE=${KINDLE_OFFLINE_STATE:-/tmp/kindle-dashboard-offline}; fi
+export STATE KINDLE_CLOCK_MODE="$MODE"
 . "$DIR/offline-network.sh" || exit 1
 mkdir -p "$STATE" || exit 1
 initial_wifi=$(network_wifi_state) || { echo 'Cannot read Wi-Fi state'; exit 1; }
@@ -47,6 +50,7 @@ active=
 previous=
 bundle_is_valid() {
   [ -s "$1/background.png" ] || return 1
+  [ "$MODE" = none ] && return 0
   for glyph in 0 1 2 3 4 5 6 7 8 9 colon; do
     [ -s "$1/$glyph.png" ] || return 1
   done
@@ -92,7 +96,7 @@ while :; do
       bundle-*) display_bundle "$STATE/$bundle" || echo 'Incomplete dashboard bundle' ;;
     esac
   fi
-  if [ -n "$active" ]; then
+  if [ -n "$active" ] && [ "$MODE" = local ]; then
     clock_y=110
     if [ -f "$active/clock-y" ] && [ "$(cat "$active/clock-y")" = 69 ]; then clock_y=69; fi
     current=$(TZ="$(clock_tz "$STATE/clock-offset")" date +%H:%M)
@@ -111,7 +115,7 @@ while :; do
     clear_status_bar || echo 'Could not clear status bar'
   fi
   now=$(date +%s)
-  delay=$((60 - now % 60))
+  if [ "$MODE" = none ]; then delay=300; else delay=$((60 - now % 60)); fi
   sleep "$delay" & sleeper=$!
   wait "$sleeper"
   kill "$sleeper" 2>/dev/null

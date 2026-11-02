@@ -112,3 +112,25 @@ func TestWeatherLastSuccessfulFetchSurvivesCacheAndFailure(t *testing.T) {
 		t.Fatalf("stale: %+v %q %v calls %d", stale, status, ok, calls)
 	}
 }
+
+func TestOptionalWeatherDetails(t *testing.T) {
+	now := time.Date(2026, 11, 2, 22, 30, 0, 0, time.FixedZone("CST", 8*3600))
+	var b strings.Builder
+	b.WriteString(`<div id="7d"><ul>`)
+	for i := 0; i < 5; i++ {
+		fmt.Fprintf(&b, `<li class="sky"><h1>%d日</h1><p class="wea">多云</p><p class="tem"><span>30℃</span><i>22℃</i></p></li>`, now.AddDate(0, 0, i).Day())
+	}
+	b.WriteString(`</ul></div><li class="li1"><i></i><span>最弱</span><em>紫外线指数</em></li><script>var observe24h_data = {"od":{"od0":"202611022200","od2":[{"od22":"19.4","od24":"东北风","od25":"1","od27":"91","od28":"10"}]}};</script>`)
+	w, err := parseChinaWeather(b.String(), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w.humidity != "91%" || w.wind != "东北风 1级" || w.air != "10" || w.ultraviolet != "最弱" {
+		t.Fatalf("details: %+v", w)
+	}
+	bad := strings.NewReplacer(`"od27":"91"`, `"od27":"999"`, `"od28":"10"`, `"od28":"-1"`).Replace(b.String())
+	w, err = parseChinaWeather(bad, now)
+	if err != nil || w.humidity != "" || w.air != "" {
+		t.Fatalf("invalid details: %+v %v", w, err)
+	}
+}

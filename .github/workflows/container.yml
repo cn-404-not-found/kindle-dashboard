@@ -43,7 +43,7 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
-            ghcr.io/cn-404-not-found/kindle-dashboard:latest
+            ghcr.io/cn-404-not-found/kindle-dashboard:${{ github.ref_name == 'main' && 'latest' || 'no-clock-preview' }}
             ghcr.io/cn-404-not-found/kindle-dashboard:${{ github.sha }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}

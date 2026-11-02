@@ -146,3 +146,34 @@ func TestDashboardLayoutCompatibility(t *testing.T) {
 		}
 	}
 }
+
+func TestNoClockChangesOnlyTopLeft(t *testing.T) {
+	reg, err := loadSCFont(fontFile)
+	if err != nil {
+		t.Skip("font unavailable")
+	}
+	data := DashboardData{TimeStr: "10:28", DateStr: "2026年11月2日", LunarStr: "九月廿四", Humidity: "91%", Air: "10", Wind: "东北风 1级", Ultraviolet: "最弱"}
+	draw := func(noClock bool) image.Image {
+		dc := gg.NewContext(int(canvasW), int(canvasH))
+		dc.SetColor(color.White)
+		dc.Clear()
+		r := &renderer{dc: dc, reg: reg, bold: reg, faces: make(map[faceKey]font.Face), layoutTop: topSectionY, noClock: noClock}
+		drawTopSection(r, data, false)
+		return dc.Image()
+	}
+	a, b := draw(false), draw(true)
+	changed := false
+	for y := 0; y < 300; y++ {
+		for x := 0; x < int(canvasW); x++ {
+			if a.At(x, y) != b.At(x, y) {
+				changed = true
+				if x >= int(canvasW-padX-370) {
+					t.Fatalf("weather card changed at %d,%d", x, y)
+				}
+			}
+		}
+	}
+	if !changed {
+		t.Fatal("left area unchanged")
+	}
+}

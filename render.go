@@ -60,6 +60,7 @@ type renderer struct {
 	bold      *sfnt.Font // 粗体字重；与 reg 相同表示无独立粗体，回退偏移模拟
 	faces     map[faceKey]font.Face
 	layoutTop float64
+	noClock   bool
 }
 
 // faceKey 同时区分字号与是否粗体，避免不同字重的面互相覆盖。
@@ -190,6 +191,10 @@ func renderDashboard(data DashboardData, hideClock bool) ([]byte, error) {
 }
 
 func renderDashboardWithTop(data DashboardData, hideClock bool, layoutTop float64) ([]byte, error) {
+	return renderDashboardMode(data, hideClock, false, layoutTop)
+}
+
+func renderDashboardMode(data DashboardData, hideClock, noClock bool, layoutTop float64) ([]byte, error) {
 	// 1. 加载中文字体。更纱 TTC 每个文件仅含单一字重，但内含 SC/TC/J/K/HC 全部正字法，
 	//    故常规、粗体分两个文件加载，再各自选出简体(SC)子变体（优先字体风格 fontStyle）。
 	regFont, err := loadSCFont(fontFile)
@@ -214,6 +219,7 @@ func renderDashboardWithTop(data DashboardData, hideClock bool, layoutTop float6
 		bold:      boldFont,
 		faces:     make(map[faceKey]font.Face),
 		layoutTop: layoutTop,
+		noClock:   noClock,
 	}
 
 	// 3. 绘制三区并编码 PNG。字体面创建失败属编程不变量，用 recover 收敛为 error。
@@ -312,35 +318,40 @@ func drawTopSection(r *renderer, data DashboardData, hideClock bool) {
 	sectionH := 250.0 // CSS .top-section height
 	sectionBottom := sectionTop + sectionH
 
-	// ---- 左侧：大号时间（纵居中）----
-	const timeSize = 128.0
-	timeBaseline := baselineFromTop(sectionTop+(sectionH-timeSize)/2, timeSize)
-	if !hideClock {
-		r.text(left, timeBaseline, data.TimeStr, timeSize, color.Black, true, 0)
-	}
+	if r.noClock {
+		drawWeatherDetails(r, data, sectionTop, left, right-370)
+	} else {
+		// ---- 左侧：大号时间（纵居中）----
+		const timeSize = 128.0
+		timeBaseline := baselineFromTop(sectionTop+(sectionH-timeSize)/2, timeSize)
+		if !hideClock {
+			r.text(left, timeBaseline, data.TimeStr, timeSize, color.Black, true, 0)
+		}
 
-	// ---- 时间右侧：日期 + 农历（纵居中堆叠，在时间与天气卡片之间居中）----
-	const (
-		dateSize  = 34.0
-		lunarSize = 30.0
-		ddGap     = 6.0
-	)
-	// 精确测量时间文字宽度，确保日期块不与时间重叠
-	r.dc.SetFontFace(r.face(timeSize, true))
-	timeW, _ := r.dc.MeasureString(data.TimeStr)
-	dateAreaLeft := left + timeW + 20 // 时间右缘 + 充足间距
-	dateAreaRight := right - 360 - 10 // 天气卡片左缘 - 间距
-	dateBlockCenter := (dateAreaLeft + dateAreaRight) / 2
-	// 日期拆成「年 / 月日 / 农历」三行，居中纵向堆叠并整体纵居中。
-	parts := strings.SplitN(data.DateStr, "年", 2)
-	yearLine := parts[0] + "年" // "2026年"
-	mdLine := parts[1]         // "8月3日"
-	lunarLine := "农历 " + data.LunarStr
-	blockH := dateSize + ddGap + dateSize + ddGap + lunarSize
-	bStart := sectionTop + (sectionH-blockH)/2
-	r.text(dateBlockCenter, baselineFromTop(bStart, dateSize), yearLine, dateSize, color.Black, true, 0.5)
-	r.text(dateBlockCenter, baselineFromTop(bStart+dateSize+ddGap, dateSize), mdLine, dateSize, color.Black, true, 0.5)
-	r.text(dateBlockCenter, baselineFromTop(bStart+dateSize+ddGap+dateSize+ddGap, lunarSize), lunarLine, lunarSize, color.RGBA{0x33, 0x33, 0x33, 0xff}, false, 0.5)
+		// ---- 时间右侧：日期 + 农历（纵居中堆叠，在时间与天气卡片之间居中）----
+		const (
+			dateSize  = 34.0
+			lunarSize = 30.0
+			ddGap     = 6.0
+		)
+		// 精确测量时间文字宽度，确保日期块不与时间重叠
+		r.dc.SetFontFace(r.face(timeSize, true))
+		timeW, _ := r.dc.MeasureString(data.TimeStr)
+		dateAreaLeft := left + timeW + 20 // 时间右缘 + 充足间距
+		dateAreaRight := right - 360 - 10 // 天气卡片左缘 - 间距
+		dateBlockCenter := (dateAreaLeft + dateAreaRight) / 2
+		// 日期拆成「年 / 月日 / 农历」三行，居中纵向堆叠并整体纵居中。
+		parts := strings.SplitN(data.DateStr, "年", 2)
+		yearLine := parts[0] + "年" // "2026年"
+		mdLine := parts[1]         // "8月3日"
+		lunarLine := "农历 " + data.LunarStr
+		blockH := dateSize + ddGap + dateSize + ddGap + lunarSize
+		bStart := sectionTop + (sectionH-blockH)/2
+		r.text(dateBlockCenter, baselineFromTop(bStart, dateSize), yearLine, dateSize, color.Black, true, 0.5)
+		r.text(dateBlockCenter, baselineFromTop(bStart+dateSize+ddGap, dateSize), mdLine, dateSize, color.Black, true, 0.5)
+		r.text(dateBlockCenter, baselineFromTop(bStart+dateSize+ddGap+dateSize+ddGap, lunarSize), lunarLine, lunarSize, color.RGBA{0x33, 0x33, 0x33, 0xff}, false, 0.5)
+
+	}
 
 	// ---- 右侧天气卡片（圆角 16，4px 黑边；温度/天气右对齐，南宁在卡片左侧空白区）----
 	cardW := 360.0
@@ -380,6 +391,33 @@ func drawTopSection(r *renderer, data DashboardData, hideClock bool) {
 	r.dc.SetColor(color.Black)
 	r.dc.DrawLine(left, sectionBottom, right, sectionBottom)
 	r.dc.Stroke()
+}
+
+// drawWeatherDetails keeps the original card and calendar layout while replacing the clock.
+func drawWeatherDetails(r *renderer, data DashboardData, top, left, right float64) {
+	d := parseDate(data.DateStr)
+	weekdays := []string{"星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"}
+	center := (left + right) / 2
+	r.fitText(center, top+68, fmt.Sprintf("%d月%d日", int(d.Month()), d.Day()), 60, right-left-10, color.Black, true, .5)
+	r.fitText(center, top+110, weekdays[int(d.Weekday())]+"   农历 "+data.LunarStr, 26, right-left-10, color.Black, false, .5)
+	value := func(s string) string {
+		if s == "" {
+			return "--"
+		}
+		return s
+	}
+	mid := (left + right) / 2
+	centers := []float64{(left + mid) / 2, (mid + right) / 2}
+	lines := []struct {
+		x, y float64
+		text string
+	}{
+		{centers[0], top + 164, "空气 " + value(data.Air)}, {centers[1], top + 164, "湿度 " + value(data.Humidity)},
+		{centers[0], top + 209, "风 " + value(data.Wind)}, {centers[1], top + 209, "紫外线 " + value(data.Ultraviolet)},
+	}
+	for _, line := range lines {
+		r.fitText(line.x, line.y, line.text, 25, (right-left)/2-12, color.Black, false, .5)
+	}
 }
 
 // weatherUpdateLabel 保留日期以区分跨天或较久未更新的天气。

@@ -19,13 +19,14 @@ import (
 var weatherCityIDs = map[string]string{"南宁": "101300101", "北京": "101010100", "上海": "101020100", "广州": "101280101", "深圳": "101280601", "杭州": "101210101", "成都": "101270101", "武汉": "101200101", "西安": "101110101", "重庆": "101040100"}
 
 type weatherResult struct {
-	temp                   float64
-	weatherText            string
-	highTemp, lowTemp      float64
-	forecast               []ForecastItem
-	observedAt, forecastAt time.Time
-	fetchedAt              time.Time
-	forecastDate           time.Time
+	temp                             float64
+	weatherText                      string
+	highTemp, lowTemp                float64
+	forecast                         []ForecastItem
+	observedAt, forecastAt           time.Time
+	fetchedAt                        time.Time
+	forecastDate                     time.Time
+	humidity, air, wind, ultraviolet string
 }
 
 var weatherCache struct {
@@ -186,7 +187,11 @@ func parseChinaWeather(page string, now time.Time) (weatherResult, error) {
 		OD struct {
 			Time  string `json:"od0"`
 			Items []struct {
-				Temp string `json:"od22"`
+				Temp      string `json:"od22"`
+				Humidity  string `json:"od27"`
+				Air       string `json:"od28"`
+				WindDir   string `json:"od24"`
+				WindLevel string `json:"od25"`
 			} `json:"od2"`
 		} `json:"od"`
 	}
@@ -198,6 +203,23 @@ func parseChinaWeather(page string, now time.Time) (weatherResult, error) {
 		return weatherResult{}, fmt.Errorf("气温实况时间无效或过期")
 	}
 	out.observedAt = observedAt
+	item := obs.OD.Items[0]
+	if n, e := strconv.Atoi(item.Humidity); e == nil && n >= 0 && n <= 100 {
+		out.humidity = fmt.Sprintf("%d%%", n)
+	}
+	if n, e := strconv.Atoi(item.Air); e == nil && n >= 0 && n <= 500 {
+		out.air = strconv.Itoa(n)
+	}
+	if item.WindDir != "" && item.WindDir != "暂无" {
+		out.wind = item.WindDir
+		if n, e := strconv.Atoi(item.WindLevel); e == nil && n >= 0 && n <= 17 {
+			out.wind += fmt.Sprintf(" %d级", n)
+		}
+	}
+	uv := regexp.MustCompile(`(?s)<li\b[^>]*>\s*<i[^>]*>\s*</i>\s*<span>([^<]+)</span>\s*<em>紫外线指数</em>`).FindStringSubmatch(page)
+	if len(uv) == 2 {
+		out.ultraviolet = strings.TrimSpace(html.UnescapeString(uv[1]))
+	}
 	updatePattern := regexp.MustCompile(`id="fc_24h_internal_update_time"\s+value="(\d{10,12})"`)
 	if match := updatePattern.FindStringSubmatch(page); len(match) == 2 {
 		stamp := match[1]
