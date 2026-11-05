@@ -1,0 +1,1 @@
+{"items":[{"name":"Local Calendar","items":[{"name":"Start local calendar","action":"./start.sh"},{"name":"Stop local calendar","action":"./stop.sh"}]}]}

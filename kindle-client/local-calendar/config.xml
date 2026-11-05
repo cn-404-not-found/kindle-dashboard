@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<extension><information><name>Local Calendar</name><version>1.0</version><author>Kindle Dashboard</author><id>kindle-local-calendar</id></information><menus><menu type="json" dynamic="true">menu.json</menu></menus></extension>
