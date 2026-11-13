@@ -1,6 +1,6 @@
 # Kindle Dashboard 客户端
 
-将本目录的 `config.xml`、`menu.json`、`start.sh`、`start-landscape.sh`、`stop.sh`、`power.sh`、`touch-light.sh`、`exit-button.sh`、`start-offline.sh`、`offline-dashboard.sh`、`offline-fetch.sh`、`offline-network.sh`、`offline-ui-guard.sh`、`set-server.sh`、`server-settings.sh` 放到 Kindle 的 `/mnt/us/extensions/kindle-dashboard/`，并把 `kindle-client/TRMNL.sh` 复制两份，分别命名为同目录的 `dashboard.sh` 和 `dashboard-landscape.sh`。`Set server address` 依赖设备已安装的 kterm。
+将本目录的 `config.xml`、`menu.json`、`start.sh`、`start-landscape.sh`、`landscape-ui.sh`、`stop.sh`、`power.sh`、`touch-light.sh`、`exit-button.sh`、`start-offline.sh`、`offline-dashboard.sh`、`offline-fetch.sh`、`offline-network.sh`、`offline-ui-guard.sh`、`set-server.sh`、`server-settings.sh` 放到 Kindle 的 `/mnt/us/extensions/kindle-dashboard/`，并把 `kindle-client/TRMNL.sh` 复制两份，分别命名为同目录的 `dashboard.sh` 和 `dashboard-landscape.sh`。`Set server address` 依赖设备已安装的 kterm。
 
 在 KUAL 中选择 `Set server address`，输入 `192.168.10.103:8080` 或 `http://192.168.10.103:8080` 一类地址，确认后写入设备本地 `server-url.txt`。也支持 HTTPS 和域名，不支持路径、查询参数或 IPv6 字面地址。保存后客户端下次刷新读取，通常约 60 秒；首次从旧版脚本升级后需停止并重新启动客户端。空输入取消，不更改配置。
 
@@ -10,7 +10,7 @@
 
 在线模式启动时立即刷新，随后按 Kindle 系统时钟对齐刷新周期（当前服务端为每分钟），不修改系统时钟。网络延迟和绘屏会影响实际显示时刻。
 
-横屏在线模式需新版服务端。先停止当前看板，再选择 `Start landscape online`，将设备逆时针转 90 度；如果服务端尚未更新，客户端会保留当前画面并等待重试。
+横屏在线模式需新版服务端。先停止当前看板，再选择 `Start landscape online`，将设备逆时针转 90 度；如果服务端尚未更新，客户端会保留当前画面并等待重试。下载首张图成功后暂停窗口管理器，防止系统状态栏覆盖；退出时恢复，并由独立守护进程在异常退出时尝试恢复。暂停期间无法依靠普通系统界面操作，使用五秒内短按电源键四次退出；重新启动设备也可恢复。
 
 看板运行时可在 5 秒内连续短按电源键 4 次，停止看板并返回主页；该操作使用 Paperwhite 3 的 `/dev/input/event0`，其他设备需验证。
 

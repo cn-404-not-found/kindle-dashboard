@@ -66,16 +66,16 @@ func renderLandscapeDashboard(data DashboardData) (result []byte, err error) {
 		dc.DrawRectangle(x, 742, boxW, 147)
 		dc.Stroke()
 		day := weekdayNames[int(date.AddDate(0, 0, i+1).Weekday())]
-		weather, temperature := "--", "-- / --"
+		weather, temperature := "--", "--/--"
 		if i < len(data.FutureForecast) {
 			f := data.FutureForecast[i]
 			day = f.Weekday
 			weather = f.WeatherText
-			temperature = fmt.Sprintf("%d° / %d°", f.HighTemp, f.LowTemp)
+			temperature = fmt.Sprintf("%d°/%d°", f.HighTemp, f.LowTemp)
 		}
-		r.fitText(x+boxW/2, 781, day, 21, boxW-4, black, true, .5)
-		r.fitText(x+boxW/2, 824, weather, 21, boxW-4, black, true, .5)
-		r.fitText(x+boxW/2, 866, temperature, 19, boxW-4, black, false, .5)
+		r.fitText(x+boxW/2, 781, day, 26, boxW-4, black, true, .5)
+		r.fitText(x+boxW/2, 824, weather, 25, boxW-4, black, true, .5)
+		r.fitText(x+boxW/2, 866, temperature, 23, boxW-4, black, true, .5)
 	}
 	line(55, 959, 599, 959, 1, border)
 	lunar := calendar.NewSolarFromYmd(date.Year(), int(date.Month()), date.Day()).GetLunar()

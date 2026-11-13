@@ -28,7 +28,8 @@ fi
 
 # ============================ 用户配置 ============================
 # 在 KUAL 的 Set server address 中设置；每次刷新读取，不执行配置内容。
-SERVER_SETTINGS="${KINDLE_DASHBOARD_DIR:-/mnt/us/extensions/kindle-dashboard}/server-settings.sh"
+KINDLE_DASHBOARD_DIR=${KINDLE_DASHBOARD_DIR:-/mnt/us/extensions/kindle-dashboard}
+SERVER_SETTINGS="$KINDLE_DASHBOARD_DIR/server-settings.sh"
 
 API_KEY="kindle-dashboard"        # 服务端不校验，随便填
 USER_AGENT="trmnl-display/0.1.1"
@@ -38,6 +39,13 @@ DEBUG_MODE=false                  # true=屏幕上显示调试文字；false=正
 
 TMP_DIR="/tmp/trmnl-kindle"
 mkdir -p "$TMP_DIR"
+if [ "$KINDLE_DASHBOARD_LAYOUT" = landscape-v1 ]; then
+  . "$KINDLE_DASHBOARD_DIR/landscape-ui.sh" || exit 1
+  trap landscape_ui_cleanup TERM INT HUP
+fi
+dashboard_sleep() {
+  if [ "$KINDLE_DASHBOARD_LAYOUT" = landscape-v1 ]; then landscape_sleep "$1"; else sleep "$1"; fi
+}
 
 # ---------------------- 设备信息（自带，无需 utils.sh） ----------------------
 # 从 eips -i 读取 Kindle 帧缓冲真实分辨率
@@ -77,7 +85,7 @@ while true; do
   BASE_URL=$(/bin/sh "$SERVER_SETTINGS" --get) || {
     eips_debug "Invalid server address."
     DELAY=$(next_refresh_delay "$(date +%s)" 60) || DELAY=60
-    sleep "$DELAY"
+    dashboard_sleep "$DELAY"
     continue
   }
   eips_debug "TRMNL Kindle client"
@@ -97,7 +105,7 @@ while true; do
     eips_debug "Error: No JSON response."
     eips_debug "Retry at next minute..."
     DELAY=$(next_refresh_delay "$(date +%s)" 60) || DELAY=60
-    sleep "$DELAY"
+    dashboard_sleep "$DELAY"
     continue
   fi
 
@@ -111,7 +119,7 @@ while true; do
     eips_debug "Error: parse image_url failed"
     eips_debug "Retry at next minute..."
     DELAY=$(next_refresh_delay "$(date +%s)" 60) || DELAY=60
-    sleep "$DELAY"
+    dashboard_sleep "$DELAY"
     continue
   fi
   eips_debug "URL: $IMAGE_URL"
@@ -138,23 +146,29 @@ while true; do
     eips_debug "Error: download failed!"
     eips_debug "Retry at next minute..."
     DELAY=$(next_refresh_delay "$(date +%s)" 60) || DELAY=60
-    sleep "$DELAY"
+    dashboard_sleep "$DELAY"
     continue
   fi
 
   if [ "$KINDLE_DASHBOARD_LAYOUT" = landscape-v1 ] && ! grep -iq '^X-Dashboard-Layout: landscape-v1' "$TMP_DIR/headers"; then
     echo 'Server does not support landscape-v1; keeping the previous screen.' >&2
     DELAY=$(next_refresh_delay "$(date +%s)" 60) || DELAY=60
-    sleep "$DELAY"
+    dashboard_sleep "$DELAY"
+    continue
+  fi
+
+  if [ "$KINDLE_DASHBOARD_LAYOUT" = landscape-v1 ] && ! landscape_ui_start; then
+    echo 'Status bar suppression failed; retrying.' >&2
+    dashboard_sleep 60
     continue
   fi
 
   # 5) 显示（始终先清屏，避免残影；eips -g 1:1 铺满）
   eips -c
-  sleep 1
+  dashboard_sleep 1
   eips -g "$IMAGE_PATH"
 
   DELAY=$(next_refresh_delay "$(date +%s)" "$REFRESH_RATE") || DELAY="$REFRESH_RATE"
   eips_debug "Next refresh in ${DELAY}s."
-  sleep "$DELAY"
+  dashboard_sleep "$DELAY"
 done
