@@ -5,7 +5,7 @@
 ## 功能
 
 - 显示当前时间、公历和农历日期。
-- 显示当天气温、天气与五日预报，以及服务端最近一次成功获取天气的日期和时间；天气数据从中国天气网公开页面获取，气温观测与天气预报是不同的数据。
+- 显示当天气温、天气与五日预报，以及服务端最近一次成功获取天气的日期和时间；横屏版的五日预报从明天开始。天气数据来自中国天气网，气温观测与天气预报是不同的数据。
 - 月历以周一开头，突出今天，显示农历月份、传统节日和节气。
 - 输出 8 位灰度 PNG，适配 Kindle `eips`；可按客户端上报的屏幕尺寸等比缩放。
 - Kindle 端通过 KUAL 启动或停止看板，并可用屏幕键盘设置服务器地址。
@@ -18,7 +18,7 @@
 中国天气网页面 ──> Go 服务端 ──HTTP/PNG──> Kindle 客户端 ──> 墨水屏
 ```
 
-服务端需要能访问天气来源，Kindle 需要能访问服务端。程序运行时不依赖 AI、天气 API 密钥或数据库。城市名通过中国天气网城市列表自动匹配；天气抓取结果通常缓存 30 分钟，获取失败时会尝试使用缓存或显示不可用。公开网页的结构或访问规则变化可能影响数据获取。天气更新时间反映服务端获取成功的时间，不等同于气象站观测时间，也不能单独证明 Kindle 当前的静态 IP 或网络状态。
+服务端需要能访问天气来源，Kindle 需要能访问服务端。程序运行时不依赖 AI、天气 API 密钥或数据库。城市名通过中国天气网城市列表自动匹配；天气抓取结果通常缓存一小时，跨日会重新获取；失败时尝试使用缓存或显示不可用。公开网页的结构或访问规则变化可能影响数据获取。天气更新时间反映服务端获取成功的时间，不等同于气象站观测时间，也不能单独证明 Kindle 当前的静态 IP 或网络状态。
 
 ## 安装与部署（Docker）
 
@@ -86,8 +86,8 @@ docker compose down         # 停止并移除容器
 
 1. 从 GitHub 仓库下载项目（页面上选择 **Code → Download ZIP**）并解压。
 2. 用 USB 将 Kindle 连接电脑，打开 Kindle 存储盘，在 `extensions` 下新建 `kindle-dashboard` 文件夹。
-3. 将项目中 [`kindle-client/dashboard-extension/`](kindle-client/dashboard-extension/) 目录下的 `config.xml`、`menu.json`、`start.sh`、`stop.sh`、`power.sh`、`touch-light.sh`、`exit-button.sh`、`start-offline.sh`、`offline-dashboard.sh`、`offline-fetch.sh`、`offline-network.sh`、`offline-ui-guard.sh`、`set-server.sh`、`server-settings.sh` 复制到该文件夹。
-4. 将 [`kindle-client/TRMNL.sh`](kindle-client/TRMNL.sh) 复制到同一文件夹，并重命名为 `dashboard.sh`。
+3. 将项目中 [`kindle-client/dashboard-extension/`](kindle-client/dashboard-extension/) 目录下的 `config.xml`、`menu.json`、`start.sh`、`start-landscape.sh`、`stop.sh`、`power.sh`、`touch-light.sh`、`exit-button.sh`、`start-offline.sh`、`offline-dashboard.sh`、`offline-fetch.sh`、`offline-network.sh`、`offline-ui-guard.sh`、`set-server.sh`、`server-settings.sh` 复制到该文件夹。
+4. 将 [`kindle-client/TRMNL.sh`](kindle-client/TRMNL.sh) 复制两份到同一文件夹，分别命名为 `dashboard.sh` 和 `dashboard-landscape.sh`。
 5. 安全推出 Kindle，打开 KUAL → **Kindle Dashboard** → **Set server address**，输入例如 `192.168.1.20:8080` 的服务器地址并确认，再选择 **Start offline dashboard**。
 
 升级布局时，请同时更新 Kindle 客户端和服务端；新版服务端会为旧离线客户端保留旧布局，避免时钟错位。
@@ -98,12 +98,13 @@ docker compose down         # 停止并移除容器
 
 - **Start offline dashboard**：启动省电模式，Kindle 本地每分钟重绘时间，在当地时间 0、2、4 点等整点联网更新天气底图；需要新版服务端。
 - **Start online dashboard**：启动原在线模式，每分钟从服务端获取完整看板。
+- **Start landscape online**：启动横屏在线模式，每分钟更新图片；天气通常每小时更新。将 Kindle 逆时针旋转 90 度观看。服务器需更新到支持 `landscape-v1` 的版本。
 - **Stop dashboard**：停止看板，恢复启动前的前光亮度和屏保设置。也可以在 5 秒内连续短按电源键 4 次退出并返回主页（已在 Paperwhite 3 真机验证）。
 - 运行期间会请求阻止自动屏保，并将前光亮度设为 0；触摸屏幕后设为 12，约 30 秒无触摸后恢复为 0。长时间展示建议连接电源。
 - 触摸不会被看板拦截，仍可能触发 Kindle 原有界面。当前触摸设备路径针对上述 Paperwhite 3，其他型号需自行验证。设备重启后需要从 KUAL 再次启动看板。
 - 整分钟刷新以 Kindle 的系统时钟为准；画面中的时间来自服务端。两台设备的时钟应保持准确，时区配置也应符合使用地区。已检查的 Paperwhite 3 系统带网络校时功能；实际能否校时取决于网络及设备配置。
 
-服务端提供 `GET /screen.png` 和 `GET /api/display`；访问根路径 `/` 返回 404 属正常情况。浏览器预览地址为 `http://服务器IP:端口/screen.png`。服务本身没有访问认证，请限制在可信网络内访问。
+服务端提供 `GET /screen.png` 和 `GET /api/display`；访问根路径 `/` 返回 404 属正常情况。浏览器横屏预览地址为 `http://服务器IP:端口/screen.png?layout=landscape`。服务本身没有访问认证，请限制在可信网络内访问。
 
 ## Kindle 网络设置工具
 

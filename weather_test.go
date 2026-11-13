@@ -51,7 +51,7 @@ func TestParseChinaWeatherAfterMidnight(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.forecast) != 5 || !result.forecast[0].IsToday || result.forecast[0].HighTemp != 29 || result.temp != 25.4 {
+	if len(result.forecast) != 6 || !result.forecast[0].IsToday || result.forecast[0].HighTemp != 29 || result.temp != 25.4 {
 		t.Fatalf("unexpected result: %+v", result)
 	}
 	bad := strings.Replace(b.String(), `<h1>2日`, `<h1>3日`, 1)
@@ -106,8 +106,11 @@ func TestWeatherLastSuccessfulFetchSurvivesCacheAndFailure(t *testing.T) {
 	if !ok || !cached.fetchedAt.Equal(now) || calls != 1 {
 		t.Fatalf("cache: %+v calls %d", cached, calls)
 	}
+	if _, _, ok := cachedWeather(now.Add(59 * time.Minute)); !ok || calls != 1 {
+		t.Fatalf("weather should remain cached for one hour, calls=%d", calls)
+	}
 	fail = true
-	stale, status, ok := cachedWeather(now.Add(31 * time.Minute))
+	stale, status, ok := cachedWeather(now.Add(61 * time.Minute))
 	if !ok || status == "" || !stale.fetchedAt.Equal(now) || calls != 2 {
 		t.Fatalf("stale: %+v %q %v calls %d", stale, status, ok, calls)
 	}

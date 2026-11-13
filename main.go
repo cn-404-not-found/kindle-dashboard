@@ -67,7 +67,8 @@ type DashboardData struct {
 	LowTemp     float64 `json:"low_temp"`     // 今日最低温（℃）
 
 	// 5 日预报
-	Forecast []ForecastItem `json:"forecast"`
+	Forecast       []ForecastItem `json:"forecast"`
+	FutureForecast []ForecastItem `json:"future_forecast"`
 
 	// 月历网格：7 列（周日→周六）× 6 行（42 天；末格周日由渲染层推算）
 	Calendar [6][7]CalendarCell `json:"calendar"`
@@ -256,9 +257,25 @@ func fetchDashboardData() DashboardData {
 		LowTemp:     w.lowTemp,
 
 		// --- 5 日预报与月历网格 ---
-		Forecast: buildForecast(now, w),
-		Calendar: buildMonthGrid(now),
+		Forecast:       buildForecast(now, w),
+		FutureForecast: buildFutureForecast(now, w),
+		Calendar:       buildMonthGrid(now),
 	}
+}
+
+// buildFutureForecast returns up to five consecutive days after today.
+func buildFutureForecast(now time.Time, w weatherResult) []ForecastItem {
+	if !w.forecastDate.IsZero() && (w.forecastDate.Year() != now.Year() || w.forecastDate.YearDay() != now.YearDay()) {
+		return nil
+	}
+	items := make([]ForecastItem, 0, 5)
+	for i := 1; i < len(w.forecast) && i <= 5; i++ {
+		item := w.forecast[i]
+		item.Weekday = weekdayNames[int(now.AddDate(0, 0, i).Weekday())]
+		item.IsToday = false
+		items = append(items, item)
+	}
+	return items
 }
 
 // buildForecast 基于今天生成未来 5 日的预报：星期/日期由 now 推导（真实），
@@ -364,7 +381,14 @@ func screenHandler(w http.ResponseWriter, r *http.Request) {
 
 	localClock := r.URL.Query().Get("clock") == "local"
 	layoutTop := dashboardLayoutTop(localClock, r.Header.Get("X-Dashboard-Layout"))
-	pngBytes, err := renderDashboardWithTop(data, localClock, layoutTop)
+	landscape := r.Header.Get("X-Dashboard-Layout") == "landscape-v1" || r.URL.Query().Get("layout") == "landscape"
+	var pngBytes []byte
+	var err error
+	if landscape {
+		pngBytes, err = renderLandscapeDashboard(data)
+	} else {
+		pngBytes, err = renderDashboardWithTop(data, localClock, layoutTop)
+	}
 	if err != nil {
 		http.Error(w, "render failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -401,6 +425,9 @@ func screenHandler(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("X-Dashboard-Layout", "top-v2")
 		}
 		w.Header().Set("X-Dashboard-Timezone-Offset", strconv.Itoa(cfg.TimezoneOffset))
+	}
+	if landscape {
+		w.Header().Set("X-Dashboard-Layout", "landscape-v1")
 	}
 	w.Header().Set("Content-Type", "image/png")
 	// 墨水屏设备通常会缓存图片，禁用缓存以保证每次拉取最新画面。
@@ -442,7 +469,7 @@ func fitToDevice(src []byte, devW, devH int) ([]byte, error) {
 	}
 
 	// 自动旋转：横屏 framebuffer + 竖屏源图 → 顺时针转 90°
-	if devW > devH && sw < sh {
+	if (devW > devH && sw < sh) || (devW < devH && sw > sh) {
 		img = rotate90CW(img, sw, sh)
 		sw, sh = sh, sw // 旋转后宽高互换
 	}

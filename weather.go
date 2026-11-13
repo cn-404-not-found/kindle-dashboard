@@ -38,7 +38,7 @@ var weatherCache struct {
 }
 var weatherHTTPClient = &http.Client{Timeout: 10 * time.Second}
 
-// cachedWeather 缓存 30 分钟；失败后保留同城市的旧数据并标注时间，每分钟最多重试一次。
+// cachedWeather 缓存一小时；失败后保留同城市的旧数据并标注时间，每分钟最多重试一次。
 func cachedWeather(now time.Time) (weatherResult, string, bool) {
 	weatherCache.Lock()
 	defer weatherCache.Unlock()
@@ -58,7 +58,7 @@ func cachedWeather(now time.Time) (weatherResult, string, bool) {
 		}
 		return weatherResult{weatherText: "天气暂不可用"}, "天气获取失败", false
 	}
-	if weatherCache.valid && now.YearDay() == weatherCache.updated.YearDay() && now.Year() == weatherCache.updated.Year() && now.Sub(weatherCache.updated) < 30*time.Minute {
+	if weatherCache.valid && now.YearDay() == weatherCache.updated.YearDay() && now.Year() == weatherCache.updated.Year() && now.Sub(weatherCache.updated) < time.Hour {
 		return weatherCache.value, "", true
 	}
 	weatherCache.attempted = now
@@ -132,7 +132,7 @@ func parseChinaWeather(page string, now time.Time) (weatherResult, error) {
 	if len(blocks) < 5 {
 		return weatherResult{}, fmt.Errorf("预报不足五天")
 	}
-	// 页面在午夜后可能仍从前一天开始；从真正的今天起取连续五天。
+	// 页面在午夜后可能仍从前一天开始；从今天起最多保留六天。
 	start := -1
 	for i, block := range blocks {
 		day := dayPattern.FindStringSubmatch(block[1])
@@ -146,7 +146,11 @@ func parseChinaWeather(page string, now time.Time) (weatherResult, error) {
 	}
 	var out weatherResult
 	out.forecastDate = now
-	for i, block := range blocks[start : start+5] {
+	end := start + 6
+	if end > len(blocks) {
+		end = len(blocks)
+	}
+	for i, block := range blocks[start:end] {
 		day := dayPattern.FindStringSubmatch(block[1])
 		if len(day) < 2 || day[1] != strconv.Itoa(now.AddDate(0, 0, i).Day()) {
 			return weatherResult{}, fmt.Errorf("预报日期与当前日期不匹配")

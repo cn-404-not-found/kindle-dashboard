@@ -32,6 +32,7 @@ SERVER_SETTINGS="${KINDLE_DASHBOARD_DIR:-/mnt/us/extensions/kindle-dashboard}/se
 
 API_KEY="kindle-dashboard"        # 服务端不校验，随便填
 USER_AGENT="trmnl-display/0.1.1"
+KINDLE_DASHBOARD_LAYOUT=${KINDLE_DASHBOARD_LAYOUT:-}
 DEBUG_MODE=false                  # true=屏幕上显示调试文字；false=正式使用（干净画面）
 # ================================================================
 
@@ -132,10 +133,17 @@ while true; do
   IMAGE_PATH="$TMP_DIR/$FILENAME"
   rm -f "$IMAGE_PATH"
 
-  if ! curl -fsS --connect-timeout 10 --max-time 45 -o "$IMAGE_PATH" \
-    -H "png-width: $PNG_WIDTH" -H "png-height: $PNG_HEIGHT" -A "$USER_AGENT" "$IMAGE_URL" || [ ! -s "$IMAGE_PATH" ]; then
+  if ! curl -fsS --connect-timeout 10 --max-time 45 -D "$TMP_DIR/headers" -o "$IMAGE_PATH" \
+    -H "png-width: $PNG_WIDTH" -H "png-height: $PNG_HEIGHT" -H "X-Dashboard-Layout: $KINDLE_DASHBOARD_LAYOUT" -A "$USER_AGENT" "$IMAGE_URL" || [ ! -s "$IMAGE_PATH" ]; then
     eips_debug "Error: download failed!"
     eips_debug "Retry at next minute..."
+    DELAY=$(next_refresh_delay "$(date +%s)" 60) || DELAY=60
+    sleep "$DELAY"
+    continue
+  fi
+
+  if [ "$KINDLE_DASHBOARD_LAYOUT" = landscape-v1 ] && ! grep -iq '^X-Dashboard-Layout: landscape-v1' "$TMP_DIR/headers"; then
+    echo 'Server does not support landscape-v1; keeping the previous screen.' >&2
     DELAY=$(next_refresh_delay "$(date +%s)" 60) || DELAY=60
     sleep "$DELAY"
     continue

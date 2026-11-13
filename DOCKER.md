@@ -22,6 +22,8 @@ TIMEZONE_OFFSET=8
 
 访问 `http://主机IP:8080/screen.png`（如更改端口，请使用相应端口），并在 Kindle 的 `Set server address` 中填写主机地址和端口。服务端需能访问中国天气网，主机端口需能从 Kindle 访问。查看日志 `docker compose logs -f`；停止 `docker compose down`。服务非 Docker 运行仍支持原有 `config.json`。
 
+横屏版预览为 `/screen.png?layout=landscape`，需要新版 Kindle 客户端的 `Start landscape online` 入口。天气缓存一小时，时间每分钟刷新；缺失的未来预报会显示为 `--`。
+
 更新镜像：`docker compose pull && docker compose up -d`。离线转移可在能访问镜像的机器上执行 `docker pull ghcr.io/cn-404-not-found/kindle-dashboard:latest` 后，再使用 `docker save` / `docker load`。不要提交真实 `.env`、访问令牌或字体。
 
 ## 本地构建
