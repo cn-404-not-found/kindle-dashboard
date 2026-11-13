@@ -418,6 +418,29 @@ func screenHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "grayscale conversion failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	if landscape {
+		date := parseDate(data.DateStr)
+		w.Header().Set("X-Dashboard-Date", date.Format("2006-01-02"))
+		if len(data.TimeStr) >= 2 {
+			w.Header().Set("X-Dashboard-Hour", date.Format("20060102")+data.TimeStr[:2])
+		}
+		w.Header().Set("X-Dashboard-Partial-Version", "1")
+		if part := r.URL.Query().Get("part"); part != "" {
+			if r.Header.Get("png-width") != "1072" || r.Header.Get("png-height") != "1448" {
+				http.Error(w, "partial updates require a 1072x1448 framebuffer", http.StatusBadRequest)
+				return
+			}
+			var area image.Rectangle
+			pngBytes, area, err = landscapePartialPNG(pngBytes, part)
+			if err != nil {
+				http.Error(w, "partial image failed: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+			w.Header().Set("X-Dashboard-Part", part)
+			w.Header().Set("X-Dashboard-X", strconv.Itoa(area.Min.X))
+			w.Header().Set("X-Dashboard-Y", strconv.Itoa(area.Min.Y))
+		}
+	}
 
 	if localClock {
 		w.Header().Set("X-Dashboard-Clock", "local")

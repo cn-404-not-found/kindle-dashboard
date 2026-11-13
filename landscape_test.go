@@ -49,3 +49,45 @@ func TestFitLandscapeToPortraitRotatesWithoutCropping(t *testing.T) {
 		t.Fatal("top-left marker was not rotated clockwise")
 	}
 }
+
+func TestLandscapePartialImagesUseFramebufferCoordinates(t *testing.T) {
+	full := image.NewGray(image.Rect(0, 0, 1072, 1448))
+	for _, tc := range []struct {
+		part string
+		rect image.Rectangle
+	}{
+		{"clock", image.Rect(852, 55, 1020, 599)},
+		{"weather", image.Rect(182, 55, 701, 599)},
+	} {
+		full.SetGray(tc.rect.Min.X, tc.rect.Min.Y, color.Gray{Y: 123})
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, full); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		part string
+		rect image.Rectangle
+	}{
+		{"clock", image.Rect(852, 55, 1020, 599)},
+		{"weather", image.Rect(182, 55, 701, 599)},
+	} {
+		output, rect, err := landscapePartialPNG(buf.Bytes(), tc.part)
+		if err != nil || rect != tc.rect {
+			t.Fatalf("%s: rect %v err %v", tc.part, rect, err)
+		}
+		patch, err := png.Decode(bytes.NewReader(output))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if patch.Bounds().Dx() != rect.Dx() || patch.Bounds().Dy() != rect.Dy() {
+			t.Fatalf("%s: bounds %v", tc.part, patch.Bounds())
+		}
+		if color.GrayModel.Convert(patch.At(0, 0)).(color.Gray).Y != 123 {
+			t.Fatalf("%s: wrong origin", tc.part)
+		}
+	}
+	if _, _, err := landscapePartialPNG(buf.Bytes(), "unknown"); err == nil {
+		t.Fatal("unknown region must fail")
+	}
+}
