@@ -106,12 +106,39 @@ func TestWeatherLastSuccessfulFetchSurvivesCacheAndFailure(t *testing.T) {
 	if !ok || !cached.fetchedAt.Equal(now) || calls != 1 {
 		t.Fatalf("cache: %+v calls %d", cached, calls)
 	}
-	if _, _, ok := cachedWeather(now.Add(59 * time.Minute)); !ok || calls != 1 {
-		t.Fatalf("weather should remain cached for one hour, calls=%d", calls)
+	if _, _, ok := cachedWeather(now.Add(29 * time.Minute)); !ok || calls != 1 {
+		t.Fatalf("weather should remain cached until half past, calls=%d", calls)
 	}
 	fail = true
-	stale, status, ok := cachedWeather(now.Add(61 * time.Minute))
+	stale, status, ok := cachedWeather(now.Add(30 * time.Minute))
 	if !ok || status == "" || !stale.fetchedAt.Equal(now) || calls != 2 {
 		t.Fatalf("stale: %+v %q %v calls %d", stale, status, ok, calls)
+	}
+	if _, _, _ = cachedWeather(now.Add(30*time.Minute + 30*time.Second)); calls != 2 {
+		t.Fatalf("failed fetch should be throttled, calls=%d", calls)
+	}
+	fail = false
+	refreshed, status, ok := cachedWeather(now.Add(31 * time.Minute))
+	if !ok || status != "" || !refreshed.fetchedAt.Equal(now.Add(31*time.Minute)) || calls != 3 {
+		t.Fatalf("retry: %+v %q %v calls %d", refreshed, status, ok, calls)
+	}
+	if _, _, _ = cachedWeather(now.Add(time.Hour)); calls != 3 {
+		t.Fatalf("whole-hour request should use cache, calls=%d", calls)
+	}
+	if _, _, _ = cachedWeather(now.Add(90 * time.Minute)); calls != 4 {
+		t.Fatalf("next half-hour should refresh, calls=%d", calls)
+	}
+}
+
+func TestWeatherSlot(t *testing.T) {
+	loc := time.FixedZone("CST", 8*3600)
+	for _, tc := range []struct{ now, want time.Time }{
+		{time.Date(2026, 11, 1, 10, 29, 59, 0, loc), time.Date(2026, 11, 1, 9, 30, 0, 0, loc)},
+		{time.Date(2026, 11, 1, 10, 30, 0, 0, loc), time.Date(2026, 11, 1, 10, 30, 0, 0, loc)},
+		{time.Date(2026, 11, 1, 0, 0, 0, 0, loc), time.Date(2026, 10, 31, 23, 30, 0, 0, loc)},
+	} {
+		if got := weatherSlot(tc.now); !got.Equal(tc.want) {
+			t.Errorf("weatherSlot(%v) = %v, want %v", tc.now, got, tc.want)
+		}
 	}
 }

@@ -38,7 +38,16 @@ var weatherCache struct {
 }
 var weatherHTTPClient = &http.Client{Timeout: 10 * time.Second}
 
-// cachedWeather 缓存一小时；失败后保留同城市的旧数据并标注时间，每分钟最多重试一次。
+// weatherSlot 返回当前时间最近一次半点，用于统一后台和请求触发的更新判断。
+func weatherSlot(now time.Time) time.Time {
+	slot := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 30, 0, 0, now.Location())
+	if now.Before(slot) {
+		return slot.Add(-time.Hour)
+	}
+	return slot
+}
+
+// cachedWeather 在半点后更新缓存；失败时保留旧数据，每分钟最多重试一次。
 func cachedWeather(now time.Time) (weatherResult, string, bool) {
 	weatherCache.Lock()
 	defer weatherCache.Unlock()
@@ -49,7 +58,7 @@ func cachedWeather(now time.Time) (weatherResult, string, bool) {
 		weatherCache.attempted = time.Time{}
 		weatherCache.city = cityKey
 	}
-	if !weatherCache.attempted.IsZero() && now.Sub(weatherCache.attempted) < time.Minute {
+	if !weatherCache.attempted.IsZero() && !weatherCache.attempted.Before(weatherSlot(now)) && now.Sub(weatherCache.attempted) < time.Minute {
 		if weatherCache.valid {
 			if weatherCache.failed {
 				return weatherCache.value, "数据未更新", true
@@ -58,7 +67,7 @@ func cachedWeather(now time.Time) (weatherResult, string, bool) {
 		}
 		return weatherResult{weatherText: "天气暂不可用"}, "天气获取失败", false
 	}
-	if weatherCache.valid && now.YearDay() == weatherCache.updated.YearDay() && now.Year() == weatherCache.updated.Year() && now.Sub(weatherCache.updated) < time.Hour {
+	if weatherCache.valid && !weatherCache.failed && !weatherCache.updated.Before(weatherSlot(now)) {
 		return weatherCache.value, "", true
 	}
 	weatherCache.attempted = now
@@ -74,6 +83,17 @@ func cachedWeather(now time.Time) (weatherResult, string, bool) {
 	w.fetchedAt = now
 	weatherCache.value, weatherCache.updated, weatherCache.valid, weatherCache.failed = w, now, true, false
 	return w, "", true
+}
+
+// runWeatherRefresh 在启动时获取天气，之后每分钟检查半点更新和失败重试。
+func runWeatherRefresh() {
+	for {
+		now := time.Now().In(appLoc)
+		cachedWeather(now)
+		// 对齐分钟边界，确保无需客户端请求也能在半点启动获取。
+		now = time.Now().In(appLoc)
+		time.Sleep(now.Truncate(time.Minute).Add(time.Minute).Sub(now))
+	}
 }
 
 var cityIDPattern = regexp.MustCompile(`^\d{9}$`)
