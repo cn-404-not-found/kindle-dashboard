@@ -426,8 +426,9 @@ func screenHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("X-Dashboard-Partial-Version", "1")
 		if part := r.URL.Query().Get("part"); part != "" {
-			if r.Header.Get("png-width") != "1072" || r.Header.Get("png-height") != "1448" {
-				http.Error(w, "partial updates require a 1072x1448 framebuffer", http.StatusBadRequest)
+			width, height := r.Header.Get("png-width"), r.Header.Get("png-height")
+			if !(width == "1072" && height == "1448") && !(width == "758" && height == "1024") {
+				http.Error(w, "unsupported partial-update framebuffer", http.StatusBadRequest)
 				return
 			}
 			var area image.Rectangle

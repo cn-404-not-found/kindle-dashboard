@@ -1,5 +1,5 @@
 #!/bin/sh
-# PW3 landscape online mode: full paint on startup/day change, partial paints otherwise.
+# PW2/PW3 landscape online mode: full paint on startup/day change, partial paints otherwise.
 DIR=${KINDLE_DASHBOARD_DIR:-/mnt/us/extensions/kindle-dashboard}
 KINDLE_DASHBOARD_DIR=$DIR
 TMP_DIR=${KINDLE_PARTIAL_STATE:-/tmp/kindle-landscape-partial}
@@ -9,7 +9,11 @@ trap landscape_ui_cleanup TERM INT HUP
 
 width=$(eips -i 2>/dev/null | sed -n 's/.*xres:[ ]*\([0-9]*\).*/\1/p' | head -1)
 height=$(eips -i 2>/dev/null | sed -n 's/.*yres:[ ]*\([0-9]*\).*/\1/p' | head -1)
-if [ "$width:$height" != 1072:1448 ]; then echo "Unsupported framebuffer: $width x $height" >&2; exit 1; fi
+case "$width:$height" in
+  1072:1448) clock_x=852; clock_y=55; weather_x=182; weather_y=55 ;;
+  758:1024) clock_x=602; clock_y=38; weather_x=128; weather_y=38 ;;
+  *) echo "Unsupported framebuffer: $width x $height" >&2; exit 1 ;;
+esac
 
 header() { awk -v key="$1" 'tolower($1)==tolower(key ":") {gsub("\r", "", $2); print $2; exit}' "$TMP_DIR/headers"; }
 valid_metadata() {
@@ -24,7 +28,7 @@ valid_metadata() {
 fetch() {
   suffix=$1
   curl -fsS --connect-timeout 10 --max-time 45 -D "$TMP_DIR/headers" -o "$TMP_DIR/image.png" \
-    -H 'png-width: 1072' -H 'png-height: 1448' -H 'X-Dashboard-Layout: landscape-v1' \
+    -H "png-width: $width" -H "png-height: $height" -H 'X-Dashboard-Layout: landscape-v1' \
     "${url}/screen.png${suffix}" && [ -s "$TMP_DIR/image.png" ] && valid_metadata
 }
 show_full() {
@@ -50,14 +54,14 @@ while :; do
     if [ -z "$displayed_day" ]; then
       show_full || echo 'Full display failed; retrying.' >&2
     else
-      show_patch clock 852 55
+      show_patch clock "$clock_x" "$clock_y"
       rc=$?
       if [ "$rc" -eq 2 ]; then
         show_full || echo 'Date change redraw failed; retrying.' >&2
       elif [ "$rc" -ne 0 ]; then
         echo 'Clock update failed; retaining previous display.' >&2
       elif [ "$current_hour" != "$displayed_hour" ]; then
-        show_patch weather 182 55
+        show_patch weather "$weather_x" "$weather_y"
         rc=$?
         if [ "$rc" -eq 0 ]; then displayed_hour=$current_hour
         elif [ "$rc" -eq 2 ]; then show_full || echo 'Date change redraw failed.' >&2

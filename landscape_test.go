@@ -91,3 +91,39 @@ func TestLandscapePartialImagesUseFramebufferCoordinates(t *testing.T) {
 		t.Fatal("unknown region must fail")
 	}
 }
+
+func TestLandscapePartialPW2(t *testing.T) {
+	full := image.NewGray(image.Rect(0, 0, 758, 1024))
+	for y := 0; y < 1024; y++ {
+		for x := 0; x < 758; x++ {
+			full.SetGray(x, y, color.Gray{Y: uint8((x + y) % 256)})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, full); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		part string
+		rect image.Rectangle
+	}{
+		{"clock", image.Rect(602, 38, 722, 424)},
+		{"weather", image.Rect(128, 38, 496, 424)},
+	} {
+		data, rect, err := landscapePartialPNG(buf.Bytes(), tc.part)
+		if err != nil || rect != tc.rect {
+			t.Fatalf("%s: rect %v, error %v", tc.part, rect, err)
+		}
+		patch, err := png.Decode(bytes.NewReader(data))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for y := 0; y < rect.Dy(); y++ {
+			for x := 0; x < rect.Dx(); x++ {
+				if patch.At(x, y) != full.At(x+rect.Min.X, y+rect.Min.Y) {
+					t.Fatalf("%s: pixel mismatch at %d,%d", tc.part, x, y)
+				}
+			}
+		}
+	}
+}

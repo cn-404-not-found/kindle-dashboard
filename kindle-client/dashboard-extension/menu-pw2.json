@@ -1,0 +1,1 @@
+{"items":[{"name":"Kindle Dashboard","priority":0,"items":[{"name":"Start landscape online","priority":99,"action":"./start-landscape.sh"},{"name":"Stop dashboard","priority":102,"action":"./stop.sh"},{"name":"Set server address","priority":103,"action":"./set-server.sh"}]}]}
