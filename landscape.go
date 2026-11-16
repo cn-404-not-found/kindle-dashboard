@@ -47,15 +47,15 @@ func renderLandscapeDashboard(data DashboardData) (result []byte, err error) {
 	r.fitText(center, 282, fmt.Sprintf("%s  星期%s", data.DateStr, []string{"日", "一", "二", "三", "四", "五", "六"}[int(date.Weekday())]), 34, 540, black, true, .5)
 	r.fitText(center, 334, "农历 "+data.LunarStr, 27, 540, gray, false, .5)
 	line(55, 370, 599, 370, 3, black)
-	r.fitText(center, 429, data.Location, 28, 500, black, true, .5)
+	r.fitText(center, 424, data.Location, 28, 500, black, true, .5)
 	if data.WeatherAvailable {
-		r.fitText(179, 553, fmt.Sprintf("%.0f°", data.Temp), 105, 210, black, true, .5)
-		r.fitText(429, 515, data.WeatherText, 35, 240, black, true, .5)
-		r.fitText(429, 568, fmt.Sprintf("最高 %.0f° / 最低 %.0f°", data.HighTemp, data.LowTemp), 28, 250, black, false, .5)
+		r.fitText(179, 533, fmt.Sprintf("%.0f°", data.Temp), 105, 210, black, true, .5)
+		r.fitText(429, 519, data.WeatherText, 48, 250, black, true, .5)
+		r.fitText(center, 583, fmt.Sprintf("最高 %.0f°   /   最低 %.0f°", data.HighTemp, data.LowTemp), 34, 520, black, false, .5)
 	} else {
-		r.text(center, 530, "天气暂不可用", 34, gray, false, .5)
+		r.text(center, 520, "天气暂不可用", 34, gray, false, .5)
 	}
-	r.fitText(center, 629, weatherUpdateLabel(data), 21, 540, gray, false, .5)
+	r.fitText(center, 631, weatherUpdateLabel(data), 28, 540, gray, false, .5)
 	line(55, 664, 599, 664, 3, black)
 	r.text(center, 719, "未来五日", 25, black, true, .5)
 	const boxW = 103.2
