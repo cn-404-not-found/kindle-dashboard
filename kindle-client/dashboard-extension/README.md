@@ -1,6 +1,6 @@
 # Kindle Dashboard 客户端
 
-将本目录的 `config.xml`、`menu.json`、`start.sh`、`start-landscape.sh`、`landscape-ui.sh`、`stop.sh`、`power.sh`、`touch-light.sh`、`exit-button.sh`、`start-offline.sh`、`offline-dashboard.sh`、`offline-fetch.sh`、`offline-network.sh`、`offline-ui-guard.sh`、`set-server.sh`、`server-settings.sh` 放到 Kindle 的 `/mnt/us/extensions/kindle-dashboard/`，并把 `kindle-client/TRMNL.sh` 复制两份，分别命名为同目录的 `dashboard.sh` 和 `dashboard-landscape.sh`。`Set server address` 依赖设备已安装的 kterm。
+将本目录的 `config.xml`、`menu.json`、`start.sh`、`start-landscape.sh`、`landscape-ui.sh`、`network-health.sh`、`stop.sh`、`power.sh`、`touch-light.sh`、`exit-button.sh`、`start-offline.sh`、`offline-dashboard.sh`、`offline-fetch.sh`、`offline-network.sh`、`offline-ui-guard.sh`、`set-server.sh`、`server-settings.sh` 放到 Kindle 的 `/mnt/us/extensions/kindle-dashboard/`，并把 `kindle-client/TRMNL.sh` 复制两份，分别命名为同目录的 `dashboard.sh` 和 `dashboard-landscape.sh`。`Set server address` 依赖设备已安装的 kterm。
 
 在 KUAL 中选择 `Set server address`，输入 `192.168.10.103:8080` 或 `http://192.168.10.103:8080` 一类地址，确认后写入设备本地 `server-url.txt`。也支持 HTTPS 和域名，不支持路径、查询参数或 IPv6 字面地址。保存后客户端下次刷新读取，通常约 60 秒；首次从旧版脚本升级后需停止并重新启动客户端。空输入取消，不更改配置。
 
@@ -12,7 +12,7 @@
 
 横屏在线模式需新版服务端。先停止当前看板，再选择 `Start landscape online`，将设备逆时针转 90 度；如果服务端尚未更新，客户端会保留当前画面并等待重试。下载首张图成功后暂停窗口管理器，防止系统状态栏覆盖；退出时恢复，并由独立守护进程在异常退出时尝试恢复。暂停期间无法依靠普通系统界面操作，使用五秒内短按电源键四次退出；重新启动设备也可恢复。
 
-横屏在线模式支持 1072×1448 的 PW3 和 758×1024 的 PW2，每分钟联网更新时钟图块；每小时更新天气图块，失败后下一分钟重试；启动或服务端日期变化时才清屏并完整绘制。PW2 需要支持该分辨率局刷的新版服务器与客户端。该模式不改变 Wi-Fi 设置；PW2 的按键、局刷、残影及电量表现需真机验证。
+横屏在线模式支持 1072×1448 的 PW3 和 758×1024 的 PW2，每分钟联网更新时钟图块；每小时更新天气图块，失败后下一分钟重试；启动或服务端日期变化时才清屏并完整绘制。PW2 需要支持该分辨率局刷的新版服务器与客户端。联网失败时会检查无线状态：设备关闭 Wi-Fi 时重新打开，掉线时先重新关联、必要时重启无线，并每分钟重申一次防屏保以避免休眠断网；设置 `KINDLE_WIFI_WATCHDOG=0` 可关闭该行为。PW2 的按键、局刷、残影及电量表现需真机验证。
 
 看板运行时可在 5 秒内连续短按电源键 4 次，停止看板并返回主页；该操作使用 Paperwhite 3 的 `/dev/input/event0`，其他设备需验证。
 

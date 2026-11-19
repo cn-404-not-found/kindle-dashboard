@@ -5,6 +5,7 @@ KINDLE_DASHBOARD_DIR=$DIR
 TMP_DIR=${KINDLE_PARTIAL_STATE:-/tmp/kindle-landscape-partial}
 mkdir -p "$TMP_DIR" || exit 1
 . "$DIR/landscape-ui.sh" || exit 1
+. "$DIR/network-health.sh" || exit 1
 trap landscape_ui_cleanup TERM INT HUP
 
 width=$(eips -i 2>/dev/null | sed -n 's/.*xres:[ ]*\([0-9]*\).*/\1/p' | head -1)
@@ -51,6 +52,11 @@ displayed_hour=
 while :; do
   url=$(/bin/sh "$DIR/server-settings.sh" --get) || url=
   if [ -n "$url" ]; then
+    if [ "${KINDLE_WIFI_WATCHDOG:-1}" != 0 ]; then
+      # Keep the device awake and bring the radio back before touching curl.
+      network_keep_awake
+      network_ensure_online
+    fi
     if [ -z "$displayed_day" ]; then
       show_full || echo 'Full display failed; retrying.' >&2
     else

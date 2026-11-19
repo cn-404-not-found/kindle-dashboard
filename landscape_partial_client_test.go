@@ -35,6 +35,7 @@ func testLandscapePartialClientSchedule(t *testing.T, size, clock, weather strin
 	}
 	write(filepath.Join(root, "server-settings.sh"), "#!/bin/sh\necho http://example.test\n")
 	write(filepath.Join(root, "landscape-ui.sh"), "landscape_ui_start() { return 0; }\nlandscape_ui_cleanup() { exit 0; }\nlandscape_sleep() { sleep 0.05; }\n")
+	write(filepath.Join(root, "network-health.sh"), "network_keep_awake() { return 0; }\nnetwork_ensure_online() { return 0; }\n")
 	write(filepath.Join(bin, "eips"), `#!/bin/sh
 if [ "$1" = -i ]; then printf 'xres: %s\nyres: %s\n' "${TEST_SIZE%:*}" "${TEST_SIZE#*:}"; else echo "$*" >> "$TEST_LOG"; fi
 `)
