@@ -1,20 +1,23 @@
 # Continuation: Kindle Dashboard
 
-**Date:** 2026-11-16（Asia/Shanghai）
-**Working directory:** `/Users/liangyong/Documents/开发项目/Kindle-dashboard`
+**Date:** 2026-11-19（Asia/Shanghai）
+**Working directory:** `E:\开发项目\Kindle-dashboard`（Windows；本会话在 Windows 上完成）
+**Git HEAD:** `e7fb8ee fix: 横屏在线模式自动恢复断开的 Wi-Fi`（已推送 `origin/main`）
 
 ## What This Project Is
 
-Go HTTP 服务生成 Kindle 灰度仪表盘，包含时间、天气、农历和月历。用户在 Kindle Paperwhite 上通过 KUAL 客户端运行横屏看板，保持 Wi-Fi 联网并局部刷新，减少整屏闪烁。
+Go HTTP 服务为越狱 Kindle 生成灰度仪表盘，显示时间、天气、农历和月历。Kindle 通过 KUAL 客户端经局域网取图；横屏在线模式保持联网并局部刷新时钟/天气，减少整屏闪烁。项目同时支持 Paperwhite 3（1072×1448）和 Paperwhite 2（758×1024）。
 
 ## Tech Stack
 
-- Go 1.25，module `kindle-dashboard`；gg、`golang.org/x/image/font/{sfnt,opentype}`、lunar-go。
-- Docker Compose；GitHub Actions 测试并构建 linux/amd64、linux/arm64 镜像，发布至 `ghcr.io/cn-404-not-found/kindle-dashboard:latest` 和提交 SHA 标签。
-- Kindle Paperwhite 3（PW3，1072×1448）与 Paperwhite 2（PW2，第六代，758×1024）；KUAL、shell、eips、LIPC 和 kterm。
-- 官方 `Sarasa-Regular.ttc` 为默认字体，`Sarasa-Bold.ttc` 可选；字体文件不提交。
+- Go 1.25，module `kindle-dashboard`；`github.com/fogleman/gg`、`golang.org/x/image/font/{sfnt,opentype}`、`github.com/6tail/lunar-go`。
+- Docker Compose；GitHub Actions 运行 Linux 全量测试、构建 linux/amd64 与 linux/arm64 镜像，发布到 `ghcr.io/cn-404-not-found/kindle-dashboard:latest` 及提交 SHA 标签。
+- Kindle：KUAL、POSIX shell（ash）、`eips`、LIPC、kterm；PW3 触摸 `/dev/input/event1`、电源键 `/dev/input/event0`，PW2 已确认同样的输入设备路径。
+- 字体：官方 `Sarasa-Regular.ttc`（默认）和可选 `Sarasa-Bold.ttc`，均不入库。
 
 ## How to Build & Run
+
+Linux / CI：
 
 ```sh
 go mod download
@@ -25,96 +28,139 @@ curl -f -o screen.png http://127.0.0.1:8080/screen.png
 curl -f -o landscape.png 'http://127.0.0.1:8080/screen.png?layout=landscape'
 ```
 
-需要在可执行文件同目录或 `fonts/` 放置官方更纱字体。`go test ./...` 在本次 Mac 和 GitHub Linux 构建中均通过。
+本机（Windows）没有 `go` 在 PATH，使用临时工具链 `go1.25.9`：
+
+```sh
+GO="/d/Personal/Temp/kindle-preview-go/go/bin/go.exe"
+```
+
+Windows 只能运行可移植测试；`landscape_partial_client_test.go`（`!windows`）、`dashboard_power_test.go` 等依赖 Linux syscall/FIFO，交给 GitHub Actions。当前可用的 Windows 子集：
+
+```sh
+src=$(ls *.go | grep -v '_test\.go$')
+"$GO" test -count=1 $src network_health_test.go landscape_test.go weather_test.go \
+  calendar_test.go local_calendar_test.go display_test.go
+```
+
+Git 目录归属另一 Windows SID，所有 git 命令加：
+
+```sh
+git -c safe.directory='E:/开发项目/Kindle-dashboard' ...
+```
+
+`gh` 需指定 `--repo cn-404-not-found/kindle-dashboard`。
 
 ## Key Files
 
 | 文件 | 用途 |
 | --- | --- |
-| `AGENTS.md` | 项目规范：仅改需求相关文件、运行测试、中文提交并推送；字体不入库。 |
-| `main.go`、`landscape.go`、`landscape_partial.go` | 请求、横屏渲染和按设备裁剪局部图块。 |
-| `weather.go` | 中国天气网获取、启动时更新、每小时半点后台更新、失败重试。 |
-| `kindle-client/dashboard-extension/landscape-partial.sh` | PW2/PW3 横屏在线局刷客户端。 |
-| `kindle-client/dashboard-extension/menu-pw2.json` | PW2 安装时复制为 `menu.json`；只提供横屏在线、停止和服务器地址设置。 |
-| `kindle-client/dashboard-extension/server-settings.sh` | 保存服务器地址；`set-server.sh` 通过 kterm 打开。 |
-| `kindle-client/network-settings/` | KUAL 静态 IPv4/DHCP 和 Ping 工具；无 DHCP 环境尚未验证。 |
-| `landscape_test.go`、`landscape_partial_client_test.go` | 图块坐标、像素及 PW2/PW3 局刷顺序测试。 |
-| `.github/workflows/container.yml` | Linux 测试、双架构镜像构建发布和默认竖屏 PNG 冒烟。 |
+| `AGENTS.md` | 项目规范：只改需求相关文件、补测试、中文提交并推送；字体不入库。 |
+| `main.go` | HTTP 路由、数据组装、设备旋转与局刷协议、天气后台更新。 |
+| `landscape.go` / `landscape_partial.go` | 横屏渲染；按设备分辨率裁切时钟/天气图块。 |
+| `weather.go` | 中国天气网获取、缓存、每小时半点主动更新与失败重试。 |
+| `kindle-client/dashboard-extension/landscape-partial.sh` | PW2/PW3 横屏在线局刷客户端主循环。 |
+| `kindle-client/dashboard-extension/network-health.sh` | **本会话新增**：链路级 Wi-Fi 健康检查与分级恢复。 |
+| `kindle-client/dashboard-extension/power.sh` | 防屏保、前光控制、看板异常重启与退出恢复。 |
+| `kindle-client/dashboard-extension/menu-pw2.json` | PW2 菜单（只含横屏在线、停止、服务器地址）；PW2 设备上它被复制为 `menu.json`。 |
+| `kindle-client/dashboard-extension/menu.json` | PW3/完整菜单（含离线与在线模式），**不要装到 PW2**。 |
+| `kindle-client/network-settings/` | 静态 IPv4/DHCP 与 Ping 工具；无 DHCP 环境仍未验证。 |
+| `network_health_test.go` | **本会话新增**：Wi-Fi 恢复阶梯的 shell 单元测试。 |
+| `landscape_partial_client_test.go` | PW2/PW3 刷新顺序测试（`!windows`，Linux CI 执行）。 |
+| `.github/workflows/container.yml` | Linux 测试、双架构镜像发布、默认竖屏 PNG 冒烟。 |
 
 ## What Was Just Done (Most Recent Session)
 
-1. 用户的 PW2 第六代、固件 `5.12.2.2 (3791510038)` 通过 WinterBreak2 越狱。设备生成 `documents/JAILBROKEN.txt`（`jb.sh v2.6.0`），`;kpm` 运行后生成 KPM 数据库并记录 KPM 0.2.4。官方 WinterBreak2 包来自 GitHub；同型号有组件安装不完整的报告，不仅凭成功文件判断。
-2. 通过官方 PEKI 包安装 KUAL；用户确认 KUAL 菜单打开。注意 PEKI 作者对新式越狱环境支持有限，后续排错不要盲目混装旧版 Hotfix/MRPI。
-3. `b110917 feat: 适配 PW2 横屏局部刷新` 已推送 `origin/main`：服务端支持 758×1024 局部图块，基于 PW3 坐标按比例向外取整；客户端依据 `eips -i` 选择 PW2/PW3 坐标和尺寸，保留原 PW3 行为。新增 PW2 图块像素及客户端刷新顺序测试。
-4. 已将 PW2 版客户端、`kindle-client/network-settings` 和官方 kterm 2.6 的旧架构版本安装至 Kindle；`menu-pw2.json` 复制为设备的 `menu.json`。`server-url.txt` 设置为 `http://192.168.1.250:26168`。用户确认静态 IP 设置界面可打开，但尚未实际配置、测试无 DHCP 网络。
-5. 设备检查显示 PW2 `eips -i` 为 758×1024（虚拟宽度 768），电源键 `/dev/input/event0`、触摸屏 `/dev/input/event1`，`awesome`、`wpa_cli`、`ifconfig`、`ip`、`route`、`crond` 可用。测试用临时设备检查工具已删除。
-6. [GitHub Actions 43865438563](https://github.com/cn-404-not-found/kindle-dashboard/actions/runs/43865438563) Linux 全量测试、双架构镜像构建发布与默认竖屏 PNG 冒烟通过。用户自行更新服务器后，本机验证 PW2 时钟与天气局部请求返回 200、正确坐标及灰度 PNG。用户确认重启 Kindle 后 KUAL 正常，横屏看板页面正常显示。
+1. 用户报告 Kindle **每天晚上自动断开 Wi-Fi**、之后一直连不回来；确认设备设置里没有 Power Saver 选项，要求在**代码层面**保证 Wi-Fi 持续连接。
+2. 定位原因：Kindle 空闲/休眠时会关闭射频；原客户端每分钟只重试 `curl`，**没有任何 Wi-Fi 自愈**，所以夜里掉线后永远不会恢复。原 `power.sh` 只设置了一次 `preventScreenSaver 1`。
+3. 新增 `kindle-client/dashboard-extension/network-health.sh`：
+   - `network_online`：`wirelessEnable=1` + `wpa_state=COMPLETED` + `wlan0` 有 IPv4 才算在线，健康时只读。
+   - `network_ensure_online`：电台被关 → 重新打开；掉线 → `wpa_cli -i wlan0 reassociate`；仍未恢复 → 无线开关 `0→1`；每级等待 20 秒，失败下轮重试。
+   - `network_keep_awake`：每轮重申 `preventScreenSaver 1`，避免 powerd 重置后休眠关射频。
+   - `KINDLE_WIFI_WATCHDOG=0` 可关闭整套行为。
+4. 修改 `landscape-partial.sh`：source `network-health.sh`，在每轮 `curl` 前调用 `network_keep_awake` + `network_ensure_online`。
+5. 测试与文档：新增 `network_health_test.go`（健康链路、reassociate 恢复、电台重启恢复 3 个用例）；`landscape_partial_client_test.go` 增加 health 模块 stub；更新根 `README.md` 和客户端 `README.md`。
+6. 提交 `e7fb8ee fix: 横屏在线模式自动恢复断开的 Wi-Fi` 并推送。推送前远端已有 `b110917 feat: 适配 PW2` 和 `6725bc2 docs: 更新并归档交接文档`，已 rebase；客户端 README 冲突合并为「保留 PW2 支持 + 新增 WiFi 自愈说明」。
+7. [GitHub Actions 44437722106](https://github.com/cn-404-not-found/kindle-dashboard/actions/runs/44437722106) **success**：Linux 全量测试、双架构镜像、PNG 冒烟均通过。
+8. 已把更新写入用户接上的 Kindle（Windows 盘符 `G:`）：从 `git show HEAD:…` 写入 `network-health.sh`、`landscape-partial.sh`、客户端 `README.md`，校验 CR=0、与 HEAD 字节一致；保留 `server-url.txt` = `http://192.168.1.250:26168`。设备原 `landscape-partial.sh` 与 `HEAD~1` 完全一致，说明只差本次改动。
+9. 设备身份判断：其 `menu.json` 与仓库 `menu-pw2.json` 内容一致（无离线/在线模式项），`menu-pw2.json` 也在，服务器地址与 2026-11-16 的 PW2 会话记录一致；因此本次更新的是 **PW2**，不是 PW3。未在会话中直接读取 `eips` 分辨率。
+10. 复制完成并 `sync` 后，设备在后续检查期间从 `G:` 卸载（可能被用户安全弹出或 USB 断开）。文件已在卸载前校验通过，但不能假设设备当前仍挂载。
+11. 回答用户：**服务器端不需要更新**——本次只改客户端脚本，服务端接口/局刷协议/渲染均未变。
 
 ## Current State
 
 **Working:**
-- `main`、`origin/main` 本次功能提交为 `b110917`，交接文档提交可能使 HEAD 前进；服务器已由用户更新。
-- PW2 越狱、KUAL 菜单、网络设置界面及横屏完整画面均有用户现场确认。时钟及天气图块服务端响应正确。
-- 横屏在线：启动及跨日全刷，每分钟时钟局刷，整点天气局刷，失败保留画面并后续重试；长期联网，不显示电量/Wi-Fi。服务端启动时获取天气，之后每小时半点主动更新。
+- Wi-Fi 自愈代码已提交、推送，CI 全绿。
+- PW2 设备上的 `network-health.sh` / `landscape-partial.sh` / `README.md` 已写入并校验（LF、匹配 HEAD）；`server-url.txt` 未动。
+- 健康链路下行为不变：检查只读，不写 Wi-Fi 设置；刷新坐标与 PW2/PW3 布局未改。
 
 **Broken / Known Issues:**
-- 用户曾报告 KUAL 一时打不开，重启后恢复；原因不明，勿宣称已根治。
-- PW2 真实每分钟局刷、整点天气、闪烁/残影、四次短按退出及异常恢复尚无用户明确反馈。自动化测试和 HTTP 响应不能替代实机确认。
-- 静态 IP 工具目前要求先关联目标 SSID；SSID 匹配时每 5 秒重设地址、路由、DNS，并用 cron 保障重启。**无 DHCP 时系统是否维持 Wi-Fi 关联未验证**，不要声称已实现可靠无 DHCP 连接。网络环境实际参数由用户提供。
-- 服务器此前访问 GHCR 出现 TLS 超时；本次用户报告容器更新完成，服务器响应已验证。不要假设该网络问题已彻底解决。
+- **无法宣称夜间断网已修复**：尚未经过一晚实机观察。自愈是链路级（电台关闭、掉线、DHCP/关联丢失）；若整机被 powerd 强制挂起，进程无法运行，靠每分钟重申防屏保缓解，不能保证。
+- 设备已卸载，用户尚未（在本会话内）重新启动 `Start landscape online`。
+- PW2 真机每分钟局刷、整点天气、闪烁/残影、四次短按退出仍需用户反馈。
+- 无 DHCP 静态 IP 场景仍未验证；KUAL 曾偶发打不开（原因不明）；GHCR/TLS 超时问题不要假设已根除。
+- PW2 的 `menu.json` 是**有意**的最小菜单，不要用仓库的完整 `menu.json` 覆盖。
 
 **In Progress:**
-- 无未提交的功能代码。等待用户观察 PW2 局刷和退出，并在可用的无 DHCP 网络中验证静态 IP。
+- 用户需安全弹出 `G:` 后，在 KUAL 启动横屏在线，观察一晚；若仍断，收集 `/tmp/kindle-dashboard.log` 断网前后日志。
 
 ## Pending Tasks
 
-1. 用户原请求：“我现在手上的 Kindle Paper 2……还要安装那个手动设置IP地址的工具……未来我的 Kindle 会在一个没有 DHCP 的环境当中使用，因此我需要手动设置 IP 地址。” 工具已安装且界面可打开；无 DHCP 环境中的关联、设置、重启/重连、路由和可达性仍需现场验证，必要时只改相关代码。
-2. 用户确认“重启之后正常了，现在可以打开正常的看板页面了”。如用户继续测试，确认 PW2 每分钟局刷、整点天气、退出/恢复和残影；异常时检查 `/tmp/kindle-dashboard.log`，不要假设实机已全部通过。
-3. 用户自行更新服务器容器；除非另有明确要求，不代替用户部署。
+1. 用户原话：“我把kindle接上，你帮我把程序更新了。” —— 文件已更新；剩余动作在设备侧：安全弹出、KUAL → `Kindle Dashboard` → `Start landscape online`。
+2. 观察夜间连接；若仍掉线，把日志发来。日志应出现 `Wi-Fi offline; attempting recovery.` 或 `Reassociate failed; toggling the radio.`；据此区分是设备省电（`wirelessEnable=0`）还是路由器/关联问题（`wirelessEnable=1` 但 `wpa_state` 非 `COMPLETED`）。
+3. 服务器端由用户自行更新；本次无需更新。除非用户明确要求，不代替部署。
+4. 之前遗留：PW2 实机局刷/残影/退出验证；无 DHCP 网络静态 IP 验证；KUAL 偶发打不开。
+5. 不要同步 PW2 的 `menu.json` 为完整菜单。
 
 ## Key Technical Decisions
 
-- PW2 使用和 PW3 相同的横屏在线刷新策略；不显示电量或 Wi-Fi，保持联网。时钟图块 PW2 `(602,38)`，120×386；天气 `(128,38)`，368×386。PW3 时钟 `(852,55)`、168×544，天气 `(182,55)`、519×544。图块来自设备方向的完整图。
-- PW2 的 KUAL 菜单不显示当前仅支持 PW3 的离线模式，避免误启动。PW3 现有菜单和坐标不改变。
-- 保留用户认可的横屏天气排版，最高/最低温位于一行居中；不要擅自改回两行。
-- 客户端首次完整图绘制前暂停 `awesome`，退出恢复并使用守护进程；五秒内短按电源键四次退出曾在 PW3 验证，PW2 仍需验证。
-- 服务器生成完整图再裁图；局刷减少设备绘制，并非停止无线或服务端局部渲染。
+- **Wi-Fi 自愈放在客户端主循环**，不新增独立守护进程：每轮刷新前先做轻量检查，健康时无写操作；恢复按「开电台 → reassociate → 电台重启」逐级升级，避免每分钟无意义地切射频。
+- 每轮重申 `preventScreenSaver 1`：`power.sh` 只在启动/重启看板时设置一次，若被 powerd 重置，设备休眠会直接关射频。
+- 使用 `com.lab126.cmd wirelessEnable` 作为电台开关、`wpa_cli -i wlan0 status` + `ifconfig wlan0` 判定连通；这些与离线模式 `offline-network.sh` 已验证的做法一致。
+- 本次**不改服务器**：协议和渲染未变；PW2 所需的动态 `png-width`/`png-height` 适配已在 `b110917` 完成。
+- PW2 使用 `menu-pw2.json` 作为设备 `menu.json`；PW3 使用完整 `menu.json`，两者不要混装。
+- 保留用户认可的横屏天气排版（最高/最低温单行居中），不要重排。
+- 部署客户端脚本时从 `git show HEAD:path` 取内容，而不是直接复制工作区文件（见 Gotchas 的 CRLF 问题）。
 
 ## Gotchas & Traps
 
-**PW2 屏幕及裁图**
-实际 `eips -i`：`xres=758`、`yres=1024`、`xres_virtual=768`。使用可见尺寸，不要把虚拟宽度当成请求宽度。
-**Solution:** 按 `landscape_partial.go` 和 `landscape-partial.sh` 的 PW2 映射请求和验证图块；关注缩放边缘向外取整。
-**Lesson:** 服务端新版本和客户端必须同时支持该分辨率。
+**工作区 CRLF 与提交 LF 不一致**
+Windows 工作区里许多 `kindle-client/dashboard-extension/*` 文件实际含 CRLF（例如 `stop.sh` 有 7 个 CR），尽管 `.gitattributes` 声明 `eol=lf`；但 `git show HEAD:path` 的提交内容全部是 LF（已逐个验证 CR=0）。直接把工作区文件复制到 Kindle 可能带入 CRLF，导致 ash 脚本异常。
+**Solution:** 部署时用 `git show HEAD:path > /g/...`，复制后执行 `tr -cd '\r' | wc -c` 确认 CR=0，再 `sync`。
+**Lesson:** `.gitattributes` 只约束 Git 检出/提交，不保证当前工作区字节。
 
-**旧客户端/服务端不同步**
-旧服务端对 PW2 图块返回 HTTP 400；新版返回 200 并附坐标。
-**Solution:** 用户更新容器，再测试 `/screen.png?part=clock`，带 `png-width: 758`、`png-height: 1024`、`X-Dashboard-Layout: landscape-v1`。
-**Lesson:** GHCR 发布不等于用户服务器已运行新版。
+**Git 目录所有权**
+本机仓库归属另一个 Windows SID，普通 `git` 报 `dubious ownership`。
+**Solution:** 每条命令加 `-c safe.directory='E:/开发项目/Kindle-dashboard'`；`gh` 加 `--repo`。
+**Lesson:** 不要改全局 Git 信任设置。
 
-**临时占位文件很慢**
-为防 OTA 曾尝试填充 PW2 可用空间；约 3 GB 经 USB 以约 2 MB/s 写入。用户要求停止，进程在 I/O 中延迟退出；最终临时文件已删除、空间恢复，用户选择不填充。越狱期间成功后不要再自动创建大文件。
-**Solution:** 尊重用户选择；如有卡住先等待安全结束再弹出，不要直接断开正在写入的设备。
-**Lesson:** 长时间占满设备并非用户同意默认做法。
+**设备身份与菜单**
+本次挂载的 `G:` 是 **PW2**（`menu.json` 与 `menu-pw2.json` 一致、服务器地址与 PW2 会话一致）。若误把仓库完整 `menu.json` 写入，会暴露 PW3 专用的离线/在线模式。
+**Solution:** PW2 始终使用 `menu-pw2.json`；更新时不要覆盖 `menu.json`。
+**Lesson:** 先核对 `menu.json` 内容再判断设备，不要凭想象。
 
-**新版越狱与旧 KUAL**
-WinterBreak2 成功标记不保证旧组件齐全；PEKI 安装后用户确实打开 KUAL，但该工具作者提示不适用于所有现代环境。
-**Solution:** 按实际症状查看组件/日志；不要盲目安装 Universal Hotfix 或重复越狱。
-**Lesson:** 旧教程和新式 KPM 组件不可随意混用。
+**Windows 无法跑全部测试**
+`landscape_partial_client_test.go` 是 `!windows`；`dashboard_power_test.go` 用 `syscall.Mkfifo`。本机只能跑可移植子集。
+**Solution:** 本机跑上面的 Windows 子集；用带 stub 的手工 shell 冒烟验证 PW2/PW3 坐标；全量交给 GitHub Actions。
+**Lesson:** 区分平台限制和真实回归。
 
-**无 DHCP 网络限制**
-当前 `network.sh` 和 `auto.sh` 依赖 `wpa_state=COMPLETED` 与目标 SSID，一些 Kindle 可能在 DHCP 失败后断开。
-**Solution:** 在用户可控的目标网络做现场测试；在确定行为前明确不保证自动重连。
-**Lesson:** 界面可打开不等于无 DHCP 连接可用。
+**远端分叉**
+推送时远端已有 PW2 与文档提交，直接 push 被拒。
+**Solution:** `git fetch` → `git rebase origin/main` → 解决 `kindle-client/dashboard-extension/README.md` 冲突（保留 PW2 文本 + WiFi 自愈文本）→ `git push`。
+**Lesson:** 多会话/多机器并行时先 fetch 再推送。
 
-**本地交接与配置文件**
-有未跟踪的 `config.json`、`continuation.archive.20261115_000954.md`、`continuation.archive.20261116_193301.md`，不能随意提交或删除。此前 Git stash 保存了 `continuation.md` 的本地删除状态；不要随意应用或丢弃。
-**Solution:** 提交时只添加本次明确涉及文件；字体和本地配置不入库。
-**Lesson:** stash 和未跟踪归档是用户工作状态的一部分。
+**设备会在检查中途卸载**
+USB 模式下 `G:` 可能在无操作后断开/被弹出，`ls /g` 突然报不存在。
+**Solution:** 写完后立即校验并 `sync`；不要假设挂载一直存在；重新挂载后再检查。
+**Lesson:** 不要把“路径突然消失”误判为文件被删除。
+
+**自愈的边界**
+Wi-Fi watchdog 只恢复链路（电台、关联、IPv4），不修复路由器夜间重启、上游故障或服务端不可达。
+**Solution:** 先看日志与 `wirelessEnable`/`wpa_state`；再决定是否查路由器。
+**Lesson:** 客户端自愈不等于网络环境稳定。
 
 ## How to Deploy
 
-用户自行在服务器现有 Compose 目录运行：
+服务器（用户自行操作，本次不需要）：
 
 ```sh
 docker compose pull
@@ -122,6 +168,19 @@ docker compose up -d
 docker compose ps
 ```
 
-Kindle 已安装本次客户端，服务器地址为 `http://192.168.1.250:26168`。KUAL → `Kindle Dashboard` → `Start landscape online` 启动，逆时针旋转 90°；`Set server address` 修改服务端地址，独立的 `Wi-Fi IP Settings` 设置设备自身地址。用户希望未来用于没有 DHCP 的网络，设置时需其提供 IP、掩码、网关、DNS 和 Wi-Fi 连接条件，并先确保可恢复。
+Kindle 客户端更新（本次已对 PW2 执行；重做时）：
 
-若重新安装 PW2 客户端：把 `kindle-client/dashboard-extension/` 内容放到 `/mnt/us/extensions/kindle-dashboard/`，用 `menu-pw2.json` 覆盖设备中的 `menu.json`，复制 `kindle-client/TRMNL.sh` 为 `dashboard.sh` 和 `dashboard-landscape.sh`，保留已有 `server-url.txt`。`kindle-client/network-settings/` 放到 `/mnt/us/extensions/kindle-network/`，`/mnt/us/extensions/kterm/` 需匹配 PW2 旧架构。不要将 PW2 菜单误装到 PW3。
+```sh
+G="git -c safe.directory=E:/开发项目/Kindle-dashboard"
+$G show HEAD:kindle-client/dashboard-extension/network-health.sh \
+  > /g/extensions/kindle-dashboard/network-health.sh
+$G show HEAD:kindle-client/dashboard-extension/landscape-partial.sh \
+  > /g/extensions/kindle-dashboard/landscape-partial.sh
+$G show HEAD:kindle-client/dashboard-extension/README.md \
+  > /g/extensions/kindle-dashboard/README.md
+sync
+```
+
+然后安全弹出 `G:`，在 KUAL 选择 `Kindle Dashboard` → `Start landscape online`。PW2 设备当前服务器地址为 `http://192.168.1.250:26168`，不要覆盖 `server-url.txt`。PW2 重装时用 `menu-pw2.json` 作为 `menu.json`；PW3 才用完整 `menu.json`。
+
+日志：`/tmp/kindle-dashboard.log`。正常恢复会打印 `Wi-Fi offline; attempting recovery.`、`Reassociate failed; toggling the radio.` 等。
