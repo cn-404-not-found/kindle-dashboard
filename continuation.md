@@ -1,8 +1,8 @@
 # Continuation: Kindle Dashboard
 
-**Date:** 2026-11-19（Asia/Shanghai）
+**Date:** 2026-11-20（Asia/Shanghai）
 **Working directory:** `E:\开发项目\Kindle-dashboard`（Windows；本会话在 Windows 上完成）
-**Git HEAD:** `e7fb8ee fix: 横屏在线模式自动恢复断开的 Wi-Fi`（已推送 `origin/main`）
+**Git HEAD:** `173255b docs: 更新并归档交接文档`（已推送 `origin/main`；Wi-Fi 自愈提交为 `e7fb8ee`）
 
 ## What This Project Is
 
@@ -85,28 +85,31 @@ git -c safe.directory='E:/开发项目/Kindle-dashboard' ...
 9. 设备身份判断：其 `menu.json` 与仓库 `menu-pw2.json` 内容一致（无离线/在线模式项），`menu-pw2.json` 也在，服务器地址与 2026-11-16 的 PW2 会话记录一致；因此本次更新的是 **PW2**，不是 PW3。未在会话中直接读取 `eips` 分辨率。
 10. 复制完成并 `sync` 后，设备在后续检查期间从 `G:` 卸载（可能被用户安全弹出或 USB 断开）。文件已在卸载前校验通过，但不能假设设备当前仍挂载。
 11. 回答用户：**服务器端不需要更新**——本次只改客户端脚本，服务端接口/局刷协议/渲染均未变。
+12. 2026-11-20 用户反馈：更新后**夜间已不再掉 Wi-Fi**。此前"待观察"的自愈修复通过实机过夜验证。
 
 ## Current State
 
 **Working:**
 - Wi-Fi 自愈代码已提交、推送，CI 全绿。
+- **夜间掉线已验证修复**（2026-11-20 用户反馈过夜不再断网）：每分钟重申 `preventScreenSaver 1` 阻止休眠关射频；掉线时按「开电台 → reassociate → 电台重启」自愈。
 - PW2 设备上的 `network-health.sh` / `landscape-partial.sh` / `README.md` 已写入并校验（LF、匹配 HEAD）；`server-url.txt` 未动。
 - 健康链路下行为不变：检查只读，不写 Wi-Fi 设置；刷新坐标与 PW2/PW3 布局未改。
 
 **Broken / Known Issues:**
-- **无法宣称夜间断网已修复**：尚未经过一晚实机观察。自愈是链路级（电台关闭、掉线、DHCP/关联丢失）；若整机被 powerd 强制挂起，进程无法运行，靠每分钟重申防屏保缓解，不能保证。
-- 设备已卸载，用户尚未（在本会话内）重新启动 `Start landscape online`。
+- 自愈是链路级的；路由器夜间重启、上游故障不在客户端能力范围内。若整机被 powerd 强制挂起，进程无法运行，只能靠每分钟重申防屏保缓解。
+- 未核实具体由哪一级恢复生效：用户未提供 `/tmp/kindle-dashboard.log`，日志中是否出现 `Wi-Fi offline; attempting recovery.` 不明。最可能的主因是 `network_keep_awake`（防休眠关射频）。
+- 设备当前未挂载在本机。
 - PW2 真机每分钟局刷、整点天气、闪烁/残影、四次短按退出仍需用户反馈。
 - 无 DHCP 静态 IP 场景仍未验证；KUAL 曾偶发打不开（原因不明）；GHCR/TLS 超时问题不要假设已根除。
 - PW2 的 `menu.json` 是**有意**的最小菜单，不要用仓库的完整 `menu.json` 覆盖。
 
 **In Progress:**
-- 用户需安全弹出 `G:` 后，在 KUAL 启动横屏在线，观察一晚；若仍断，收集 `/tmp/kindle-dashboard.log` 断网前后日志。
+- 无。夜间掉线问题已由用户实机确认解决；若以后再次掉线，再收集 `/tmp/kindle-dashboard.log` 断网前后日志，区分省电（`wirelessEnable=0`）与关联/路由器问题。
 
 ## Pending Tasks
 
-1. 用户原话：“我把kindle接上，你帮我把程序更新了。” —— 文件已更新；剩余动作在设备侧：安全弹出、KUAL → `Kindle Dashboard` → `Start landscape online`。
-2. 观察夜间连接；若仍掉线，把日志发来。日志应出现 `Wi-Fi offline; attempting recovery.` 或 `Reassociate failed; toggling the radio.`；据此区分是设备省电（`wirelessEnable=0`）还是路由器/关联问题（`wirelessEnable=1` 但 `wpa_state` 非 `COMPLETED`）。
+1. 已完成：PW2 文件已更新，用户已在 KUAL 启动 `Start landscape online` 并过夜观察。
+2. 已完成：用户反馈夜间不再掉 Wi-Fi（2026-11-20），暂无需收集日志。若复发，再看 `/tmp/kindle-dashboard.log` 中是否有 `Wi-Fi offline; attempting recovery.` / `Reassociate failed; toggling the radio.`。
 3. 服务器端由用户自行更新；本次无需更新。除非用户明确要求，不代替部署。
 4. 之前遗留：PW2 实机局刷/残影/退出验证；无 DHCP 网络静态 IP 验证；KUAL 偶发打不开。
 5. 不要同步 PW2 的 `menu.json` 为完整菜单。
@@ -115,6 +118,7 @@ git -c safe.directory='E:/开发项目/Kindle-dashboard' ...
 
 - **Wi-Fi 自愈放在客户端主循环**，不新增独立守护进程：每轮刷新前先做轻量检查，健康时无写操作；恢复按「开电台 → reassociate → 电台重启」逐级升级，避免每分钟无意义地切射频。
 - 每轮重申 `preventScreenSaver 1`：`power.sh` 只在启动/重启看板时设置一次，若被 powerd 重置，设备休眠会直接关射频。
+- 该组合已由用户过夜实机验证有效（2026-11-20）；`KINDLE_WIFI_WATCHDOG=0` 可整体关闭，排查时优先读日志判断触发到哪一级。
 - 使用 `com.lab126.cmd wirelessEnable` 作为电台开关、`wpa_cli -i wlan0 status` + `ifconfig wlan0` 判定连通；这些与离线模式 `offline-network.sh` 已验证的做法一致。
 - 本次**不改服务器**：协议和渲染未变；PW2 所需的动态 `png-width`/`png-height` 适配已在 `b110917` 完成。
 - PW2 使用 `menu-pw2.json` 作为设备 `menu.json`；PW3 使用完整 `menu.json`，两者不要混装。
