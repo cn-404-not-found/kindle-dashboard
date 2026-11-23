@@ -24,21 +24,11 @@ func TestResolveDashboardPage(t *testing.T) {
 }
 
 func TestDashboardPageSupportsPartial(t *testing.T) {
-	for _, part := range []string{"clock", "weather"} {
-		if !dashboardPageSupportsPartial(dashboardPageHome, part) {
-			t.Fatalf("home must support %q patches", part)
-		}
+	if !dashboardPageSupportsPartial(dashboardPageHome) {
+		t.Fatal("home must support partial updates")
 	}
-	if dashboardPageSupportsPartial(dashboardPageHome, "pageclock") {
-		t.Fatal("home must reject pageclock patches")
-	}
-	if !dashboardPageSupportsPartial(dashboardPageOpencode, "pageclock") {
-		t.Fatal("opencode page must support pageclock patches")
-	}
-	for _, part := range []string{"clock", "weather", ""} {
-		if dashboardPageSupportsPartial(dashboardPageOpencode, part) {
-			t.Fatalf("opencode page must reject %q patches", part)
-		}
+	if dashboardPageSupportsPartial(dashboardPageOpencode) {
+		t.Fatal("opencode page must not accept partial updates")
 	}
 }
 
@@ -48,6 +38,25 @@ func TestOpencodeHeaderClock(t *testing.T) {
 	clock, date := opencodeHeaderClock(now)
 	if clock != "14:05" || date != "11月23日 周一" {
 		t.Fatalf("clock = %q, date = %q", clock, date)
+	}
+}
+
+func TestOpencodeIntervalLabel(t *testing.T) {
+	previous := opencodePollInterval
+	defer func() { opencodePollInterval = previous }()
+	for _, tc := range []struct {
+		interval time.Duration
+		want     string
+	}{
+		{60 * time.Second, "每分钟"},
+		{5 * time.Minute, "每 5 分钟"},
+		{90 * time.Second, "每 90 秒"},
+		{30 * time.Second, "每分钟"},
+	} {
+		opencodePollInterval = tc.interval
+		if got := opencodeIntervalLabel(); got != tc.want {
+			t.Fatalf("interval %v: %q, want %q", tc.interval, got, tc.want)
+		}
 	}
 }
 

@@ -439,7 +439,7 @@ func screenHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Dashboard-Prev-Page", page.Prev)
 		w.Header().Set("X-Dashboard-Next-Page", page.Next)
 		if part := r.URL.Query().Get("part"); part != "" {
-			if !dashboardPageSupportsPartial(page.Name, part) {
+			if !dashboardPageSupportsPartial(page.Name) {
 				http.Error(w, "page does not support partial updates", http.StatusBadRequest)
 				return
 			}

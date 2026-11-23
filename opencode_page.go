@@ -20,8 +20,7 @@ const (
 	opencodeCanvasW = 1448.0
 	opencodeCanvasH = 1072.0
 
-	// 页头时钟的排版锚点与字号。局刷裁剪区域按这些常量反推，改动时需同步
-	// landscapePartialPNG 中的 pageclock 区域。
+	// 页头时钟的排版锚点与字号。
 	opencodeClockCenterX  = 840.0
 	opencodeClockBaseline = 93.0
 	opencodeClockTimeSize = 54.0
@@ -218,8 +217,7 @@ func opencodeResetLabel(reset, now time.Time) string {
 
 // opencodeFooterText 组合数据来源、过期提示与错误信息。
 func opencodeFooterText(usage OpencodeUsage, now time.Time) string {
-	const source = "数据来源 opencode.ai/zen/go/v1/usage · 每 5 分钟更新 · 虚线为 80% 警戒线"
-	text := source
+	text := fmt.Sprintf("数据来源 opencode.ai/zen/go/v1/usage · %s更新 · 虚线为 80%% 警戒线", opencodeIntervalLabel())
 	if usage.Err != "" {
 		if len(usage.Windows) > 0 {
 			text = "更新失败：" + usage.Err + " · 显示上次数据"
@@ -233,6 +231,21 @@ func opencodeFooterText(usage OpencodeUsage, now time.Time) string {
 		}
 	}
 	return text
+}
+
+// opencodeIntervalLabel 把轮询间隔转成页面底部的简短说明。
+func opencodeIntervalLabel() string {
+	seconds := int(opencodePollInterval / time.Second)
+	if seconds < 60 {
+		seconds = 60
+	}
+	if seconds == 60 {
+		return "每分钟"
+	}
+	if seconds%60 == 0 {
+		return fmt.Sprintf("每 %d 分钟", seconds/60)
+	}
+	return fmt.Sprintf("每 %d 秒", seconds)
 }
 
 // drawOpencodeBar 绘制带 80% 警戒线的横向进度条；percent<0 时只画空条。

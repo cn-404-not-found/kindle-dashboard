@@ -30,9 +30,13 @@ import (
 const (
 	opencodeDefaultUsageURL    = "https://opencode.ai/zen/go/v1/usage"
 	opencodeMaxResponseBytes   = 64 << 10
-	opencodeDefaultInterval    = 300 * time.Second
+	opencodeDefaultInterval    = 60 * time.Second
 	opencodeDefaultHTTPTimeout = 12 * time.Second
 )
+
+// opencodePollInterval 是当前生效的轮询间隔，仅由启动流程写入，
+// 供页面底部说明文字读取。
+var opencodePollInterval = opencodeDefaultInterval
 
 // OpencodeWindow 表示一个限额窗口（5 小时滚动 / 本周 / 本月）。
 type OpencodeWindow struct {
@@ -98,7 +102,7 @@ func opencodeUsageConfig() (endpoint, apiKey string, interval time.Duration) {
 		if seconds, err := strconv.Atoi(raw); err == nil && seconds >= 60 {
 			interval = time.Duration(seconds) * time.Second
 		} else {
-			log.Printf("OPENCODE_USAGE_INTERVAL 无效（%q），使用默认 300 秒", raw)
+			log.Printf("OPENCODE_USAGE_INTERVAL 无效（%q），使用默认 60 秒", raw)
 		}
 	}
 	return endpoint, apiKey, interval
@@ -107,6 +111,7 @@ func opencodeUsageConfig() (endpoint, apiKey string, interval time.Duration) {
 // startOpencodeUsageRefresh 启动后台轮询。未配置密钥时只记录状态，不发起请求。
 func startOpencodeUsageRefresh(ctx context.Context) {
 	endpoint, apiKey, interval := opencodeUsageConfig()
+	opencodePollInterval = interval
 	if apiKey == "" {
 		opencodeUsage.fail(fmt.Errorf("未配置 OPENCODE_GO_API_KEY"))
 		log.Printf("OpenCode Go 用量未配置：设置 OPENCODE_GO_API_KEY 后才会轮询")

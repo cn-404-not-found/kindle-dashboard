@@ -33,8 +33,8 @@ fi
 width=$(eips -i 2>/dev/null | sed -n 's/.*xres:[ ]*\([0-9]*\).*/\1/p' | head -1)
 height=$(eips -i 2>/dev/null | sed -n 's/.*yres:[ ]*\([0-9]*\).*/\1/p' | head -1)
 case "$width:$height" in
-  1072:1448) clock_x=852; clock_y=55; weather_x=182; weather_y=55; pageclock_x=950; pageclock_y=640 ;;
-  758:1024) clock_x=602; clock_y=38; weather_x=128; weather_y=38; pageclock_x=671; pageclock_y=452 ;;
+  1072:1448) clock_x=852; clock_y=55; weather_x=182; weather_y=55 ;;
+  758:1024) clock_x=602; clock_y=38; weather_x=128; weather_y=38 ;;
   *) echo "Unsupported framebuffer: $width x $height" >&2; exit 1 ;;
 esac
 
@@ -80,6 +80,18 @@ show_full() {
   read_page_nav
   last_full=$(date +%s)
 }
+
+# show_quick 在两次整页刷新之间更新全部内容：不清屏，避免每分钟闪烁。
+# 带 -x/-y 走局部更新路径；跨天时仍走 show_full，保证日期和残影一起重置。
+show_quick() {
+  fetch '' || return 1
+  if [ "$current_day" != "$displayed_day" ]; then
+    show_full || return 1
+    return 0
+  fi
+  eips -g "$TMP_DIR/image.png" -x 0 -y 0
+}
+
 show_patch() {
   part=$1; expected_x=$2; expected_y=$3
   fetch "$part" || return 1
@@ -136,13 +148,7 @@ while :; do
       if [ $((now - last_full)) -ge 300 ]; then
         show_full || echo 'Page refresh failed; retaining previous display.' >&2
       else
-        show_patch pageclock "$pageclock_x" "$pageclock_y"
-        rc=$?
-        if [ "$rc" -eq 2 ]; then
-          show_full || echo 'Date change redraw failed; retrying.' >&2
-        elif [ "$rc" -ne 0 ]; then
-          echo 'Page clock update failed; retaining previous display.' >&2
-        fi
+        show_quick || echo 'Page update failed; retaining previous display.' >&2
       fi
     fi
   else

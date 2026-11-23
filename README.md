@@ -51,7 +51,7 @@ TIMEZONE_OFFSET=8
 - `CITY_NAME`：填写城市名，如 `南宁` 或 `苏州`；程序会自动查询对应的天气数据。同名地区可使用 `省/城市`，例如 `广西/南宁`。
 - `TIMEZONE_OFFSET`：相对 UTC 的整小时固定偏移，中国为 `8`；不自动处理夏令时。
 - `OPENCODE_GO_API_KEY`（可选）：OpenCode 控制台创建的只读 service account key（`oc_sk_...`，需具备 usage read 权限），用于展示订阅用量。只保存在服务端 `.env`，不要写进 Kindle 配置或提交到 Git。
-- `OPENCODE_USAGE_INTERVAL`（可选）：OpenCode 用量轮询间隔，默认 `300` 秒。
+- `OPENCODE_USAGE_INTERVAL`（可选）：OpenCode 用量轮询间隔，默认 `60` 秒，最小 `60` 秒。
 
 ### 2. 下载并启动
 
@@ -64,7 +64,7 @@ docker compose up -d
 
 用浏览器打开 `http://服务器IP:8080/screen.png` 查看。如果修改了 `HOST_PORT`，请使用对应端口；服务器防火墙需允许 Kindle 访问该端口，服务端也需要能够访问中国天气网。
 
-配置 `OPENCODE_GO_API_KEY` 后，可访问 `http://服务器IP:8080/screen.png?page=opencode&layout=landscape` 预览 OpenCode Go 用量页；`GET /api/opencode/usage` 返回脱敏后的用量快照，便于排查。横屏客户端可直接在屏幕左右滑动切换首页与用量页；用量页页头常显当前时间与日期，每分钟只局刷这一小块。
+配置 `OPENCODE_GO_API_KEY` 后，可访问 `http://服务器IP:8080/screen.png?page=opencode&layout=landscape` 预览 OpenCode Go 用量页；`GET /api/opencode/usage` 返回脱敏后的用量快照，便于排查。横屏客户端可直接在屏幕左右滑动切换首页与用量页；用量页页头常显当前时间与日期，画面每分钟无清屏快速刷新，每 5 分钟清屏整刷一次以控制墨水屏残影。
 
 ### 3. 查看、更新和停止
 
