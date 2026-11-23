@@ -23,8 +23,8 @@ const (
 	// 页头时钟的排版锚点与字号。
 	opencodeClockCenterX  = 840.0
 	opencodeClockBaseline = 93.0
-	opencodeClockTimeSize = 54.0
-	opencodeClockDateSize = 25.0
+	opencodeClockTimeSize = 72.0
+	opencodeClockDateSize = 32.0
 )
 
 // opencodeDisplayRow 是页面真正绘制的一行，占位行用 Percent=-1 表示暂无数据。
@@ -73,7 +73,7 @@ func renderOpencodeDashboard(usage OpencodeUsage, now time.Time, pageIndex, page
 	clock, date := opencodeHeaderClock(now)
 	clockWidth := r.measure(clock, opencodeClockTimeSize, true)
 	dateWidth := r.measure(date, opencodeClockDateSize, false)
-	const clockGap = 22.0
+	const clockGap = 26.0
 	clockX := opencodeClockCenterX - (clockWidth+clockGap+dateWidth)/2
 	r.text(clockX, opencodeClockBaseline, clock, opencodeClockTimeSize, black, true, 0)
 	r.text(clockX+clockWidth+clockGap, opencodeClockBaseline, date, opencodeClockDateSize, gray, false, 0)
