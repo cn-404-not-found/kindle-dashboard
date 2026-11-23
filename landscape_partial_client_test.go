@@ -48,7 +48,7 @@ case "$url" in *"screen.png$expected") ;; *) exit 1 ;; esac
 day=2026-11-13; hour=2026111310
 case "$n" in 3|4) hour=2026111311 ;; 5|6) day=2026-11-14; hour=2026111400 ;; esac
 printf 'X-Dashboard-Layout: landscape-v1\r\nX-Dashboard-Partial-Version: 1\r\nX-Dashboard-Page: home\r\nX-Dashboard-Pages: 2\r\nX-Dashboard-Page-Index: 1\r\nX-Dashboard-Prev-Page: opencode\r\nX-Dashboard-Next-Page: opencode\r\nX-Dashboard-Date: %s\r\nX-Dashboard-Hour: %s\r\n' "$day" "$hour" > "$headers"
-case "$expected" in '?part=clock') printf 'X-Dashboard-Part: clock\r\nX-Dashboard-X: %s\r\nX-Dashboard-Y: %s\r\n' "${TEST_CLOCK%:*}" "${TEST_CLOCK#*:}" >> "$headers" ;; '?part=weather') printf 'X-Dashboard-Part: weather\r\nX-Dashboard-X: %s\r\nX-Dashboard-Y: %s\r\n' "${TEST_WEATHER%:*}" "${TEST_WEATHER#*:}" >> "$headers" ;; esac
+case "$expected" in '?page=home&part=clock') printf 'X-Dashboard-Part: clock\r\nX-Dashboard-X: %s\r\nX-Dashboard-Y: %s\r\n' "${TEST_CLOCK%:*}" "${TEST_CLOCK#*:}" >> "$headers" ;; '?page=home&part=weather') printf 'X-Dashboard-Part: weather\r\nX-Dashboard-X: %s\r\nX-Dashboard-Y: %s\r\n' "${TEST_WEATHER%:*}" "${TEST_WEATHER#*:}" >> "$headers" ;; esac
 printf 'image' > "$image"
 `)
 	path, err := filepath.Abs("kindle-client/dashboard-extension/landscape-partial.sh")
