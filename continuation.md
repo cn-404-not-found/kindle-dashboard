@@ -1,8 +1,9 @@
 # Continuation: Kindle Dashboard
 
 **Date:** 2026-11-20（Asia/Shanghai）
+**Last update:** 2026-11-23（用户实机验收：无 DHCP 通过、整套看板运行正常）
 **Working directory:** `E:\开发项目\Kindle-dashboard`（Windows；本会话在 Windows 上完成）
-**Git HEAD:** `173255b docs: 更新并归档交接文档`（已推送 `origin/main`；Wi-Fi 自愈提交为 `e7fb8ee`）
+**Git HEAD:** `770c6ee docs: 记录夜间 Wi-Fi 自愈已实机验证`（已推送 `origin/main`；Wi-Fi 自愈提交为 `e7fb8ee`）
 
 ## What This Project Is
 
@@ -86,12 +87,15 @@ git -c safe.directory='E:/开发项目/Kindle-dashboard' ...
 10. 复制完成并 `sync` 后，设备在后续检查期间从 `G:` 卸载（可能被用户安全弹出或 USB 断开）。文件已在卸载前校验通过，但不能假设设备当前仍挂载。
 11. 回答用户：**服务器端不需要更新**——本次只改客户端脚本，服务端接口/局刷协议/渲染均未变。
 12. 2026-11-20 用户反馈：更新后**夜间已不再掉 Wi-Fi**。此前"待观察"的自愈修复通过实机过夜验证。
+13. 2026-11-23 用户反馈：**无 DHCP 环境测试通过**，设备不再掉线，整套看板运行正常；此前遗留的 PW2 实机验证项一并关闭。
 
 ## Current State
 
 **Working:**
 - Wi-Fi 自愈代码已提交、推送，CI 全绿。
 - **夜间掉线已验证修复**（2026-11-20 用户反馈过夜不再断网）：每分钟重申 `preventScreenSaver 1` 阻止休眠关射频；掉线时按「开电台 → reassociate → 电台重启」自愈。
+- **无 DHCP 静态 IP 环境已验证通过**（2026-11-23 用户反馈）。
+- **整机运行正常**（2026-11-23 用户反馈）：不再掉线，日常看板作业均正常。
 - PW2 设备上的 `network-health.sh` / `landscape-partial.sh` / `README.md` 已写入并校验（LF、匹配 HEAD）；`server-url.txt` 未动。
 - 健康链路下行为不变：检查只读，不写 Wi-Fi 设置；刷新坐标与 PW2/PW3 布局未改。
 
@@ -99,19 +103,19 @@ git -c safe.directory='E:/开发项目/Kindle-dashboard' ...
 - 自愈是链路级的；路由器夜间重启、上游故障不在客户端能力范围内。若整机被 powerd 强制挂起，进程无法运行，只能靠每分钟重申防屏保缓解。
 - 未核实具体由哪一级恢复生效：用户未提供 `/tmp/kindle-dashboard.log`，日志中是否出现 `Wi-Fi offline; attempting recovery.` 不明。最可能的主因是 `network_keep_awake`（防休眠关射频）。
 - 设备当前未挂载在本机。
-- PW2 真机每分钟局刷、整点天气、闪烁/残影、四次短按退出仍需用户反馈。
-- 无 DHCP 静态 IP 场景仍未验证；KUAL 曾偶发打不开（原因不明）；GHCR/TLS 超时问题不要假设已根除。
+- PW2 真机每分钟局刷、整点天气、闪烁/残影、四次短按退出：2026-11-23 用户确认整体运行正常。
+- KUAL 曾偶发打不开（原因不明，近期未复现）；GHCR/TLS 超时问题不要假设已根除。
 - PW2 的 `menu.json` 是**有意**的最小菜单，不要用仓库的完整 `menu.json` 覆盖。
 
 **In Progress:**
-- 无。夜间掉线问题已由用户实机确认解决；若以后再次掉线，再收集 `/tmp/kindle-dashboard.log` 断网前后日志，区分省电（`wirelessEnable=0`）与关联/路由器问题。
+- 无。夜间掉线、无 DHCP 环境、PW2 整机运行均已由用户实机确认正常（2026-11-23）；若以后再次掉线，再收集 `/tmp/kindle-dashboard.log` 断网前后日志，区分省电（`wirelessEnable=0`）与关联/路由器问题。
 
 ## Pending Tasks
 
 1. 已完成：PW2 文件已更新，用户已在 KUAL 启动 `Start landscape online` 并过夜观察。
 2. 已完成：用户反馈夜间不再掉 Wi-Fi（2026-11-20），暂无需收集日志。若复发，再看 `/tmp/kindle-dashboard.log` 中是否有 `Wi-Fi offline; attempting recovery.` / `Reassociate failed; toggling the radio.`。
 3. 服务器端由用户自行更新；本次无需更新。除非用户明确要求，不代替部署。
-4. 之前遗留：PW2 实机局刷/残影/退出验证；无 DHCP 网络静态 IP 验证；KUAL 偶发打不开。
+4. 已完成：无 DHCP 网络静态 IP 验证通过（2026-11-23）；PW2 实机整体运行正常，此前局刷/残影/退出验证项一并关闭。KUAL 偶发打不开保留为低优先级观察项。
 5. 不要同步 PW2 的 `menu.json` 为完整菜单。
 
 ## Key Technical Decisions
