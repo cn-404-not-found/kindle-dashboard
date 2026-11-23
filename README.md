@@ -53,6 +53,8 @@ TIMEZONE_OFFSET=8
 - `OPENCODE_GO_API_KEY`（可选）：OpenCode 控制台创建的只读 service account key（`oc_sk_...`，需具备 usage read 权限），用于展示订阅用量。只保存在服务端 `.env`，不要写进 Kindle 配置或提交到 Git。
 - `OPENCODE_USAGE_INTERVAL`（可选）：OpenCode 用量轮询间隔，默认 `60` 秒，最小 `60` 秒。
 
+Compose 通过 `env_file: .env` 注入以上变量，Compose 文件本身只引用文件名，不包含密钥。
+
 ### 2. 下载并启动
 
 镜像已公开，无需登录 GitHub 或配置令牌：

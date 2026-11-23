@@ -16,9 +16,11 @@ docker compose up -d
 HOST_PORT=8080
 CITY_NAME=南宁
 TIMEZONE_OFFSET=8
+OPENCODE_GO_API_KEY=oc_sk_...
+OPENCODE_USAGE_INTERVAL=60
 ```
 
-`HOST_PORT` 是主机对外端口，容器内固定 8080；`CITY_NAME` 是城市名，程序会自动查询城市代码；同名地区可填写 `省/城市`；`TIMEZONE_OFFSET` 为相对 UTC 的整小时固定偏移，中国为 8，不处理夏令时。修改 `.env` 后执行 `docker compose up -d` 重新创建容器；单独 `restart` 不会重新读取环境变量。
+`compose.yaml` 通过 `env_file: .env` 注入全部配置，密钥只保存在 `.env`，不会写进 Compose 文件。`HOST_PORT` 是主机对外端口，容器内固定 8080；`CITY_NAME` 是城市名，程序会自动查询城市代码；同名地区可填写 `省/城市`；`TIMEZONE_OFFSET` 为相对 UTC 的整小时固定偏移，中国为 8，不处理夏令时；`OPENCODE_GO_API_KEY` 为可选的 OpenCode 只读用量密钥。修改 `.env` 后执行 `docker compose up -d` 重新创建容器；单独 `restart` 不会重新读取环境变量。
 
 访问 `http://主机IP:8080/screen.png`（如更改端口，请使用相应端口），并在 Kindle 的 `Set server address` 中填写主机地址和端口。服务端需能访问中国天气网，主机端口需能从 Kindle 访问。查看日志 `docker compose logs -f`；停止 `docker compose down`。服务非 Docker 运行仍支持原有 `config.json`。
 
