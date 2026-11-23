@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -57,6 +58,8 @@ printf 'image' > "$image"
 	logPath := filepath.Join(root, "draws")
 	cmd := exec.Command("sh", path)
 	cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"), "KINDLE_DASHBOARD_DIR="+root, "KINDLE_PARTIAL_STATE="+filepath.Join(root, "state"), "TEST_LOG="+logPath, "TEST_COUNT="+filepath.Join(root, "count"), "TEST_SIZE="+size, "TEST_CLOCK="+clock, "TEST_WEATHER="+weather)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +77,7 @@ printf 'image' > "$image"
 	_ = cmd.Process.Signal(syscall.SIGTERM)
 	_, _ = cmd.Process.Wait()
 	if len(lines) != 7 {
-		t.Fatalf("expected 7 paint actions, got %v", lines)
+		t.Fatalf("expected 7 paint actions, got %v; stderr:\n%s", lines, stderr.String())
 	}
 	clockArgs := "-x " + strings.Replace(clock, ":", " -y ", 1)
 	weatherArgs := "-x " + strings.Replace(weather, ":", " -y ", 1)
