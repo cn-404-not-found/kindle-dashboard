@@ -13,6 +13,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -62,6 +64,18 @@ type opencodeUsageStore struct {
 }
 
 var opencodeUsage opencodeUsageStore
+
+// opencodeUsageRevision 返回只随展示内容变化的短哈希。
+// FetchedAt 不参与计算，避免“只刷新了时间”也触发整页重绘。
+func opencodeUsageRevision(usage OpencodeUsage) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%t|%s|", usage.Available, usage.Err)
+	for _, window := range usage.Windows {
+		fmt.Fprintf(&b, "%s=%d@%d/%s;", window.Key, window.Percent, window.ResetAt.Unix(), window.Status)
+	}
+	sum := sha256.Sum256([]byte(b.String()))
+	return hex.EncodeToString(sum[:8])
+}
 
 // snapshot 返回当前快照的深拷贝，避免调用方修改共享切片。
 func (s *opencodeUsageStore) snapshot() OpencodeUsage {

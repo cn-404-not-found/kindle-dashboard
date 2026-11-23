@@ -170,6 +170,36 @@ func TestOpencodeUsageJSONShape(t *testing.T) {
 	}
 }
 
+func TestOpencodeUsageRevision(t *testing.T) {
+	reset := time.Date(2026, 11, 30, 8, 0, 0, 0, time.UTC)
+	base := OpencodeUsage{
+		Available: true,
+		FetchedAt: time.Unix(1000, 0),
+		Windows: []OpencodeWindow{
+			{Key: "rolling", Percent: 20, ResetAt: reset, Status: "ok"},
+			{Key: "weekly", Percent: 40, ResetAt: reset, Status: "ok"},
+		},
+	}
+	sameContent := base
+	sameContent.FetchedAt = time.Unix(2000, 0)
+	if opencodeUsageRevision(base) != opencodeUsageRevision(sameContent) {
+		t.Fatal("fetched_at must not change the revision")
+	}
+	for name, mutate := range map[string]func(*OpencodeUsage){
+		"percent": func(u *OpencodeUsage) { u.Windows[0].Percent++ },
+		"reset":   func(u *OpencodeUsage) { u.Windows[0].ResetAt = reset.Add(time.Hour) },
+		"status":  func(u *OpencodeUsage) { u.Windows[0].Status = "limited" },
+		"error":   func(u *OpencodeUsage) { u.Err = "boom" },
+	} {
+		changed := base
+		changed.Windows = append([]OpencodeWindow(nil), base.Windows...)
+		mutate(&changed)
+		if opencodeUsageRevision(base) == opencodeUsageRevision(changed) {
+			t.Fatalf("%s change must change the revision", name)
+		}
+	}
+}
+
 type errString string
 
 func (e errString) Error() string { return string(e) }

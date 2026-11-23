@@ -13,6 +13,8 @@ page_total=1
 page_index=1
 prev_page=
 next_page=
+usage_revision=
+displayed_revision=
 last_full=0
 page_request=$TMP_DIR/page-request
 rm -f "$page_request"
@@ -33,8 +35,8 @@ fi
 width=$(eips -i 2>/dev/null | sed -n 's/.*xres:[ ]*\([0-9]*\).*/\1/p' | head -1)
 height=$(eips -i 2>/dev/null | sed -n 's/.*yres:[ ]*\([0-9]*\).*/\1/p' | head -1)
 case "$width:$height" in
-  1072:1448) clock_x=852; clock_y=55; weather_x=182; weather_y=55 ;;
-  758:1024) clock_x=602; clock_y=38; weather_x=128; weather_y=38 ;;
+  1072:1448) clock_x=852; clock_y=55; weather_x=182; weather_y=55; pageheader_x=948; pageheader_y=620 ;;
+  758:1024) clock_x=602; clock_y=38; weather_x=128; weather_y=38; pageheader_x=670; pageheader_y=438 ;;
   *) echo "Unsupported framebuffer: $width x $height" >&2; exit 1 ;;
 esac
 
@@ -54,6 +56,8 @@ valid_metadata() {
   case "$current_day" in ????-??-??) ;; *) return 1 ;; esac
   case "$current_hour" in ??????????) ;; *) return 1 ;; esac
   case "$current_day$current_hour" in *[!0-9-]*) return 1 ;; esac
+  usage_revision=$(header X-Dashboard-Usage-Revision)
+  case "$usage_revision" in ''|*[!a-f0-9]*) usage_revision= ;; esac
 }
 fetch() {
   part=$1
@@ -77,6 +81,7 @@ show_full() {
   eips -c && landscape_sleep 1 && eips -g "$TMP_DIR/image.png" || return 1
   displayed_day=$current_day
   displayed_hour=$current_hour
+  displayed_revision=$usage_revision
   read_page_nav
   last_full=$(date +%s)
 }
@@ -90,6 +95,7 @@ show_quick() {
     return 0
   fi
   eips -g "$TMP_DIR/image.png" -x 0 -y 0
+  displayed_revision=$usage_revision
 }
 
 show_patch() {
@@ -98,6 +104,19 @@ show_patch() {
   [ "$(header X-Dashboard-Part)" = "$part" ] && [ "$(header X-Dashboard-X)" = "$expected_x" ] && [ "$(header X-Dashboard-Y)" = "$expected_y" ] || return 1
   [ "$current_day" = "$displayed_day" ] || return 2
   eips -g "$TMP_DIR/image.png" -x "$expected_x" -y "$expected_y"
+}
+
+# show_header_patch 先取页头并判断用量版本：内容没变只画页头；
+# 变了则跳过页头，直接整页快速刷新，避免同一分钟画两次。
+show_header_patch() {
+  fetch pageheader || return 1
+  [ "$(header X-Dashboard-Part)" = pageheader ] && [ "$(header X-Dashboard-X)" = "$pageheader_x" ] && [ "$(header X-Dashboard-Y)" = "$pageheader_y" ] || return 1
+  [ "$current_day" = "$displayed_day" ] || return 2
+  if [ -z "$usage_revision" ] || [ "$usage_revision" != "$displayed_revision" ]; then
+    show_quick || return 1
+    return 0
+  fi
+  eips -g "$TMP_DIR/image.png" -x "$pageheader_x" -y "$pageheader_y"
 }
 
 displayed_day=
@@ -148,7 +167,13 @@ while :; do
       if [ $((now - last_full)) -ge 300 ]; then
         show_full || echo 'Page refresh failed; retaining previous display.' >&2
       else
-        show_quick || echo 'Page update failed; retaining previous display.' >&2
+        show_header_patch
+        rc=$?
+        if [ "$rc" -eq 2 ]; then
+          show_full || echo 'Date change redraw failed; retrying.' >&2
+        elif [ "$rc" -ne 0 ]; then
+          echo 'Page header update failed; retaining previous display.' >&2
+        fi
       fi
     fi
   else

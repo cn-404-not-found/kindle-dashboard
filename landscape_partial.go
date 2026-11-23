@@ -23,6 +23,10 @@ func landscapePartialPNG(src []byte, part string) ([]byte, image.Rectangle, erro
 		area = image.Rect(852, 55, 1020, 599)
 	case "weather":
 		area = image.Rect(182, 55, 701, 599)
+	case "pageheader":
+		// 横屏页头 (620,24)-(1400,124) 顺时针旋转 90° 后的竖屏坐标。
+		// 覆盖时间、日期和右侧“更新于”标签，不含标题与分隔线。
+		area = image.Rect(948, 620, 1048, 1400)
 	default:
 		return nil, image.Rectangle{}, fmt.Errorf("unknown region %q", part)
 	}

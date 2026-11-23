@@ -64,7 +64,7 @@ docker compose up -d
 
 用浏览器打开 `http://服务器IP:8080/screen.png` 查看。如果修改了 `HOST_PORT`，请使用对应端口；服务器防火墙需允许 Kindle 访问该端口，服务端也需要能够访问中国天气网。
 
-配置 `OPENCODE_GO_API_KEY` 后，可访问 `http://服务器IP:8080/screen.png?page=opencode&layout=landscape` 预览 OpenCode Go 用量页；`GET /api/opencode/usage` 返回脱敏后的用量快照，便于排查。横屏客户端可直接在屏幕左右滑动切换首页与用量页；用量页页头常显当前时间与日期，画面每分钟无清屏快速刷新，每 5 分钟清屏整刷一次以控制墨水屏残影。
+配置 `OPENCODE_GO_API_KEY` 后，可访问 `http://服务器IP:8080/screen.png?page=opencode&layout=landscape` 预览 OpenCode Go 用量页；`GET /api/opencode/usage` 返回脱敏后的用量快照，便于排查。横屏客户端可直接在屏幕左右滑动切换首页与用量页；用量页页头常显当前时间与日期，每分钟只刷新页头，只有百分比、重置时间或状态变化时才重绘正文，每 5 分钟清屏整刷一次以控制墨水屏残影。
 
 ### 3. 查看、更新和停止
 

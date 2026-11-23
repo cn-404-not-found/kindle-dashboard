@@ -24,11 +24,21 @@ func TestResolveDashboardPage(t *testing.T) {
 }
 
 func TestDashboardPageSupportsPartial(t *testing.T) {
-	if !dashboardPageSupportsPartial(dashboardPageHome) {
-		t.Fatal("home must support partial updates")
+	for _, part := range []string{"clock", "weather"} {
+		if !dashboardPageSupportsPartial(dashboardPageHome, part) {
+			t.Fatalf("home must support %q patches", part)
+		}
 	}
-	if dashboardPageSupportsPartial(dashboardPageOpencode) {
-		t.Fatal("opencode page must not accept partial updates")
+	if dashboardPageSupportsPartial(dashboardPageHome, "pageheader") {
+		t.Fatal("home must reject pageheader patches")
+	}
+	if !dashboardPageSupportsPartial(dashboardPageOpencode, "pageheader") {
+		t.Fatal("opencode page must support pageheader patches")
+	}
+	for _, part := range []string{"clock", "weather", ""} {
+		if dashboardPageSupportsPartial(dashboardPageOpencode, part) {
+			t.Fatalf("opencode page must reject %q patches", part)
+		}
 	}
 }
 

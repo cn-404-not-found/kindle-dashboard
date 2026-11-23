@@ -107,9 +107,12 @@ if [ "$1" = -i ]; then printf 'xres: 1072\nyres: 1448\n'; else echo "$*" >> "$TE
 	write(filepath.Join(bin, "curl"), `#!/bin/sh
 while [ "$#" -gt 0 ]; do case "$1" in -D) headers=$2; shift 2;; -o) image=$2; shift 2;; -H|--max-time|--connect-timeout) shift 2;; *) url=$1; shift;; esac; done
 n=0; [ -f "$TEST_COUNT" ] && n=$(cat "$TEST_COUNT"); n=$((n+1)); echo "$n" > "$TEST_COUNT"
-case "$n" in 1|2) expected='?page=opencode' ;; *) exit 1 ;; esac
+case "$n" in 1) expected='?page=opencode' ;; 2|3) expected='?page=opencode&part=pageheader' ;; 4) expected='?page=opencode' ;; *) exit 1 ;; esac
+revision=aaaaaaaaaaaaaaaa
+case "$n" in 3|4) revision=bbbbbbbbbbbbbbbb ;; esac
 case "$url" in *"screen.png$expected") ;; *) exit 1 ;; esac
-printf 'X-Dashboard-Layout: landscape-v1\r\nX-Dashboard-Partial-Version: 1\r\nX-Dashboard-Page: opencode\r\nX-Dashboard-Pages: 2\r\nX-Dashboard-Page-Index: 2\r\nX-Dashboard-Prev-Page: home\r\nX-Dashboard-Next-Page: home\r\nX-Dashboard-Date: 2026-11-13\r\nX-Dashboard-Hour: 2026111310\r\n' > "$headers"
+printf 'X-Dashboard-Layout: landscape-v1\r\nX-Dashboard-Partial-Version: 1\r\nX-Dashboard-Page: opencode\r\nX-Dashboard-Pages: 2\r\nX-Dashboard-Page-Index: 2\r\nX-Dashboard-Prev-Page: home\r\nX-Dashboard-Next-Page: home\r\nX-Dashboard-Date: 2026-11-13\r\nX-Dashboard-Hour: 2026111310\r\nX-Dashboard-Usage-Revision: %s\r\n' "$revision" > "$headers"
+case "$expected" in *'part=pageheader') printf 'X-Dashboard-Part: pageheader\r\nX-Dashboard-X: 948\r\nX-Dashboard-Y: 620\r\n' >> "$headers" ;; esac
 printf 'image' > "$image"
 `)
 	path, err := filepath.Abs("kindle-client/dashboard-extension/landscape-partial.sh")
@@ -133,17 +136,19 @@ printf 'image' > "$image"
 	for time.Now().Before(deadline) {
 		data, _ := os.ReadFile(logPath)
 		lines = strings.Split(strings.TrimSpace(string(data)), "\n")
-		if len(lines) >= 3 {
+		if len(lines) >= 4 {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 	_ = cmd.Process.Signal(syscall.SIGTERM)
 	_, _ = cmd.Process.Wait()
-	if len(lines) != 3 {
-		t.Fatalf("expected 3 paint actions, got %v; stderr:\n%s", lines, stderr.String())
+	if len(lines) != 4 {
+		t.Fatalf("expected 4 paint actions, got %v; stderr:\n%s", lines, stderr.String())
 	}
-	if lines[0] != "-c" || !strings.Contains(lines[1], "-g") || !strings.Contains(lines[2], "-x 0 -y 0") || strings.Contains(lines[2], "-c") {
+	if lines[0] != "-c" || !strings.Contains(lines[1], "-g") ||
+		!strings.Contains(lines[2], "-x 948 -y 620") ||
+		!strings.Contains(lines[3], "-x 0 -y 0") {
 		t.Fatalf("unexpected paint schedule: %v", lines)
 	}
 }

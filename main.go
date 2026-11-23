@@ -438,8 +438,12 @@ func screenHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Dashboard-Page-Index", strconv.Itoa(page.Index))
 		w.Header().Set("X-Dashboard-Prev-Page", page.Prev)
 		w.Header().Set("X-Dashboard-Next-Page", page.Next)
+		if page.Name == dashboardPageOpencode {
+			// 只随用量展示内容变化；客户端据此决定是否需要重绘正文。
+			w.Header().Set("X-Dashboard-Usage-Revision", opencodeUsageRevision(opencodeUsage.snapshot()))
+		}
 		if part := r.URL.Query().Get("part"); part != "" {
-			if !dashboardPageSupportsPartial(page.Name) {
+			if !dashboardPageSupportsPartial(page.Name, part) {
 				http.Error(w, "page does not support partial updates", http.StatusBadRequest)
 				return
 			}
