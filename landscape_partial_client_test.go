@@ -85,3 +85,66 @@ printf 'image' > "$image"
 		t.Fatalf("unexpected paint schedule: %v", lines)
 	}
 }
+
+func TestLandscapePartialOpencodeClockPatch(t *testing.T) {
+	root := t.TempDir()
+	bin := filepath.Join(root, "bin")
+	if err := os.Mkdir(bin, 0755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(path, value string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(value), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(root, "server-settings.sh"), "#!/bin/sh\necho http://example.test\n")
+	write(filepath.Join(root, "landscape-ui.sh"), "landscape_ui_start() { return 0; }\nlandscape_ui_cleanup() { exit 0; }\nlandscape_sleep() { sleep 0.05; }\n")
+	write(filepath.Join(root, "network-health.sh"), "network_keep_awake() { return 0; }\nnetwork_ensure_online() { return 0; }\n")
+	write(filepath.Join(bin, "eips"), `#!/bin/sh
+if [ "$1" = -i ]; then printf 'xres: 1072\nyres: 1448\n'; else echo "$*" >> "$TEST_LOG"; fi
+`)
+	write(filepath.Join(bin, "curl"), `#!/bin/sh
+while [ "$#" -gt 0 ]; do case "$1" in -D) headers=$2; shift 2;; -o) image=$2; shift 2;; -H|--max-time|--connect-timeout) shift 2;; *) url=$1; shift;; esac; done
+n=0; [ -f "$TEST_COUNT" ] && n=$(cat "$TEST_COUNT"); n=$((n+1)); echo "$n" > "$TEST_COUNT"
+case "$n" in 1) expected='?page=opencode' ;; 2) expected='?page=opencode&part=pageclock' ;; *) exit 1 ;; esac
+case "$url" in *"screen.png$expected") ;; *) exit 1 ;; esac
+printf 'X-Dashboard-Layout: landscape-v1\r\nX-Dashboard-Partial-Version: 1\r\nX-Dashboard-Page: opencode\r\nX-Dashboard-Pages: 2\r\nX-Dashboard-Page-Index: 2\r\nX-Dashboard-Prev-Page: home\r\nX-Dashboard-Next-Page: home\r\nX-Dashboard-Date: 2026-11-13\r\nX-Dashboard-Hour: 2026111310\r\n' > "$headers"
+case "$expected" in *'part=pageclock') printf 'X-Dashboard-Part: pageclock\r\nX-Dashboard-X: 950\r\nX-Dashboard-Y: 640\r\n' >> "$headers" ;; esac
+printf 'image' > "$image"
+`)
+	path, err := filepath.Abs("kindle-client/dashboard-extension/landscape-partial.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(root, "draws")
+	cmd := exec.Command("sh", path)
+	cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"),
+		"KINDLE_DASHBOARD_DIR="+root, "KINDLE_PARTIAL_STATE="+filepath.Join(root, "state"),
+		"KINDLE_DASHBOARD_PAGE=opencode", "TEST_LOG="+logPath,
+		"TEST_COUNT="+filepath.Join(root, "count"))
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = cmd.Process.Kill(); _, _ = cmd.Process.Wait() }()
+	deadline := time.Now().Add(8 * time.Second)
+	var lines []string
+	for time.Now().Before(deadline) {
+		data, _ := os.ReadFile(logPath)
+		lines = strings.Split(strings.TrimSpace(string(data)), "\n")
+		if len(lines) >= 3 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	_ = cmd.Process.Signal(syscall.SIGTERM)
+	_, _ = cmd.Process.Wait()
+	if len(lines) != 3 {
+		t.Fatalf("expected 3 paint actions, got %v; stderr:\n%s", lines, stderr.String())
+	}
+	if lines[0] != "-c" || lines[1] == "-c" || !strings.Contains(lines[2], "-x 950 -y 640") {
+		t.Fatalf("unexpected paint schedule: %v", lines)
+	}
+}

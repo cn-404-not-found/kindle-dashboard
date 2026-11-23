@@ -64,7 +64,7 @@ docker compose up -d
 
 用浏览器打开 `http://服务器IP:8080/screen.png` 查看。如果修改了 `HOST_PORT`，请使用对应端口；服务器防火墙需允许 Kindle 访问该端口，服务端也需要能够访问中国天气网。
 
-配置 `OPENCODE_GO_API_KEY` 后，可访问 `http://服务器IP:8080/screen.png?page=opencode&layout=landscape` 预览 OpenCode Go 用量页；`GET /api/opencode/usage` 返回脱敏后的用量快照，便于排查。横屏客户端可直接在屏幕左右滑动切换首页与用量页。
+配置 `OPENCODE_GO_API_KEY` 后，可访问 `http://服务器IP:8080/screen.png?page=opencode&layout=landscape` 预览 OpenCode Go 用量页；`GET /api/opencode/usage` 返回脱敏后的用量快照，便于排查。横屏客户端可直接在屏幕左右滑动切换首页与用量页；用量页页头常显当前时间与日期，每分钟只局刷这一小块。
 
 ### 3. 查看、更新和停止
 
@@ -90,7 +90,7 @@ docker compose down         # 停止并移除容器
 
 1. 从 GitHub 仓库下载项目（页面上选择 **Code → Download ZIP**）并解压。
 2. 用 USB 将 Kindle 连接电脑，打开 Kindle 存储盘，在 `extensions` 下新建 `kindle-dashboard` 文件夹。
-3. 将项目中 [`kindle-client/dashboard-extension/`](kindle-client/dashboard-extension/) 目录下的 `config.xml`、`menu.json`、`start.sh`、`start-landscape.sh`、`landscape-partial.sh`、`landscape-ui.sh`、`network-health.sh`、`stop.sh`、`power.sh`、`touch-light.sh`、`exit-button.sh`、`start-offline.sh`、`offline-dashboard.sh`、`offline-fetch.sh`、`offline-network.sh`、`offline-ui-guard.sh`、`set-server.sh`、`server-settings.sh` 复制到该文件夹。
+3. 将项目中 [`kindle-client/dashboard-extension/`](kindle-client/dashboard-extension/) 目录下的 `config.xml`、`menu.json`、`start.sh`、`start-landscape.sh`、`landscape-partial.sh`、`landscape-ui.sh`、`network-health.sh`、`stop.sh`、`power.sh`、`touch-light.sh`、`touch-swipe.sh`、`exit-button.sh`、`start-offline.sh`、`offline-dashboard.sh`、`offline-fetch.sh`、`offline-network.sh`、`offline-ui-guard.sh`、`set-server.sh`、`server-settings.sh` 复制到该文件夹。
 4. 将 [`kindle-client/TRMNL.sh`](kindle-client/TRMNL.sh) 复制两份到同一文件夹，分别命名为 `dashboard.sh` 和 `dashboard-landscape.sh`。
 5. 安全推出 Kindle，打开 KUAL → **Kindle Dashboard** → **Set server address**，输入例如 `192.168.1.20:8080` 的服务器地址并确认，再选择 **Start offline dashboard**。
 

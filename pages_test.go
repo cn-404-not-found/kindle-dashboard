@@ -24,11 +24,30 @@ func TestResolveDashboardPage(t *testing.T) {
 }
 
 func TestDashboardPageSupportsPartial(t *testing.T) {
-	if !dashboardPageSupportsPartial(dashboardPageHome) {
-		t.Fatal("home must support partial updates")
+	for _, part := range []string{"clock", "weather"} {
+		if !dashboardPageSupportsPartial(dashboardPageHome, part) {
+			t.Fatalf("home must support %q patches", part)
+		}
 	}
-	if dashboardPageSupportsPartial(dashboardPageOpencode) {
-		t.Fatal("opencode page must not accept partial updates")
+	if dashboardPageSupportsPartial(dashboardPageHome, "pageclock") {
+		t.Fatal("home must reject pageclock patches")
+	}
+	if !dashboardPageSupportsPartial(dashboardPageOpencode, "pageclock") {
+		t.Fatal("opencode page must support pageclock patches")
+	}
+	for _, part := range []string{"clock", "weather", ""} {
+		if dashboardPageSupportsPartial(dashboardPageOpencode, part) {
+			t.Fatalf("opencode page must reject %q patches", part)
+		}
+	}
+}
+
+func TestOpencodeHeaderClock(t *testing.T) {
+	loc := time.FixedZone("UTC+8", 8*3600)
+	now := time.Date(2026, 11, 23, 14, 5, 0, 0, loc)
+	clock, date := opencodeHeaderClock(now)
+	if clock != "14:05" || date != "11月23日 周一" {
+		t.Fatalf("clock = %q, date = %q", clock, date)
 	}
 }
 

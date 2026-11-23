@@ -19,6 +19,13 @@ import (
 const (
 	opencodeCanvasW = 1448.0
 	opencodeCanvasH = 1072.0
+
+	// 页头时钟的排版锚点与字号。局刷裁剪区域按这些常量反推，改动时需同步
+	// landscapePartialPNG 中的 pageclock 区域。
+	opencodeClockCenterX  = 840.0
+	opencodeClockBaseline = 93.0
+	opencodeClockTimeSize = 54.0
+	opencodeClockDateSize = 25.0
 )
 
 // opencodeDisplayRow 是页面真正绘制的一行，占位行用 Percent=-1 表示暂无数据。
@@ -63,6 +70,14 @@ func renderOpencodeDashboard(usage OpencodeUsage, now time.Time, pageIndex, page
 	r.text(55, 92, title, 50, black, true, 0)
 	r.text(55+titleWidth+26, 90, "订阅用量", 28, gray, false, 0)
 	r.text(1393, 88, opencodeUpdatedLabel(usage, now), 28, gray, false, 1)
+	// 页头中间常驻当前时间与日期；固定中心点，保证局刷区域不会随文字宽度漂移。
+	clock, date := opencodeHeaderClock(now)
+	clockWidth := r.measure(clock, opencodeClockTimeSize, true)
+	dateWidth := r.measure(date, opencodeClockDateSize, false)
+	const clockGap = 22.0
+	clockX := opencodeClockCenterX - (clockWidth+clockGap+dateWidth)/2
+	r.text(clockX, opencodeClockBaseline, clock, opencodeClockTimeSize, black, true, 0)
+	r.text(clockX+clockWidth+clockGap, opencodeClockBaseline, date, opencodeClockDateSize, gray, false, 0)
 	dc.SetColor(black)
 	dc.SetLineWidth(3)
 	dc.DrawLine(55, 126, 1393, 126)
@@ -110,6 +125,12 @@ func renderOpencodeDashboard(usage OpencodeUsage, now time.Time, pageIndex, page
 		return nil, err
 	}
 	return out.Bytes(), nil
+}
+
+// opencodeHeaderClock 返回页头显示的时间与日期；日期含星期，便于翻页后仍能快速看时间。
+func opencodeHeaderClock(now time.Time) (string, string) {
+	date := fmt.Sprintf("%d月%d日 %s", now.Month(), now.Day(), weekdayNames[int(now.Weekday())])
+	return now.Format("15:04"), date
 }
 
 // opencodeDisplayRows 把用量快照转换为固定顺序的展示行；无数据时返回三个占位行。

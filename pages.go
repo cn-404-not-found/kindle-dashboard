@@ -54,8 +54,15 @@ func renderDashboardPage(page dashboardPage, data DashboardData, now time.Time) 
 	}
 }
 
-// dashboardPageSupportsPartial 表示该页面支持按区域局刷。
-// 目前只有首页有时钟/天气两个动态区域，其他页整页刷新。
-func dashboardPageSupportsPartial(name string) bool {
-	return name == dashboardPageHome
+// dashboardPageSupportsPartial 表示该页面的指定区域支持局刷。
+// 首页有时钟/天气两块动态区域；OpenCode 页只有页头时钟需要每分钟更新。
+func dashboardPageSupportsPartial(name, part string) bool {
+	switch name {
+	case dashboardPageHome:
+		return part == "clock" || part == "weather"
+	case dashboardPageOpencode:
+		return part == "pageclock"
+	default:
+		return false
+	}
 }

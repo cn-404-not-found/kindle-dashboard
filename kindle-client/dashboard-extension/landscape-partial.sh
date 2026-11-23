@@ -33,8 +33,8 @@ fi
 width=$(eips -i 2>/dev/null | sed -n 's/.*xres:[ ]*\([0-9]*\).*/\1/p' | head -1)
 height=$(eips -i 2>/dev/null | sed -n 's/.*yres:[ ]*\([0-9]*\).*/\1/p' | head -1)
 case "$width:$height" in
-  1072:1448) clock_x=852; clock_y=55; weather_x=182; weather_y=55 ;;
-  758:1024) clock_x=602; clock_y=38; weather_x=128; weather_y=38 ;;
+  1072:1448) clock_x=852; clock_y=55; weather_x=182; weather_y=55; pageclock_x=950; pageclock_y=640 ;;
+  758:1024) clock_x=602; clock_y=38; weather_x=128; weather_y=38; pageclock_x=671; pageclock_y=452 ;;
   *) echo "Unsupported framebuffer: $width x $height" >&2; exit 1 ;;
 esac
 
@@ -135,6 +135,14 @@ while :; do
       now=$(date +%s)
       if [ $((now - last_full)) -ge 300 ]; then
         show_full || echo 'Page refresh failed; retaining previous display.' >&2
+      else
+        show_patch pageclock "$pageclock_x" "$pageclock_y"
+        rc=$?
+        if [ "$rc" -eq 2 ]; then
+          show_full || echo 'Date change redraw failed; retrying.' >&2
+        elif [ "$rc" -ne 0 ]; then
+          echo 'Page clock update failed; retaining previous display.' >&2
+        fi
       fi
     fi
   else
