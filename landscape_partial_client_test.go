@@ -42,11 +42,11 @@ if [ "$1" = -i ]; then printf 'xres: %s\nyres: %s\n' "${TEST_SIZE%:*}" "${TEST_S
 	write(filepath.Join(bin, "curl"), `#!/bin/sh
 while [ "$#" -gt 0 ]; do case "$1" in -D) headers=$2; shift 2;; -o) image=$2; shift 2;; -H|--max-time|--connect-timeout) shift 2;; *) url=$1; shift;; esac; done
 n=0; [ -f "$TEST_COUNT" ] && n=$(cat "$TEST_COUNT"); n=$((n+1)); echo "$n" > "$TEST_COUNT"
-case "$n" in 1) expected='' ;; 2|3|5) expected='?part=clock' ;; 4) expected='?part=weather' ;; 6) expected='' ;; *) exit 1 ;; esac
+case "$n" in 1) expected='?page=home' ;; 2|3|5) expected='?page=home&part=clock' ;; 4) expected='?page=home&part=weather' ;; 6) expected='?page=home' ;; *) exit 1 ;; esac
 case "$url" in *"screen.png$expected") ;; *) exit 1 ;; esac
 day=2026-11-13; hour=2026111310
 case "$n" in 3|4) hour=2026111311 ;; 5|6) day=2026-11-14; hour=2026111400 ;; esac
-printf 'X-Dashboard-Layout: landscape-v1\r\nX-Dashboard-Partial-Version: 1\r\nX-Dashboard-Date: %s\r\nX-Dashboard-Hour: %s\r\n' "$day" "$hour" > "$headers"
+printf 'X-Dashboard-Layout: landscape-v1\r\nX-Dashboard-Partial-Version: 1\r\nX-Dashboard-Page: home\r\nX-Dashboard-Pages: 2\r\nX-Dashboard-Page-Index: 1\r\nX-Dashboard-Prev-Page: opencode\r\nX-Dashboard-Next-Page: opencode\r\nX-Dashboard-Date: %s\r\nX-Dashboard-Hour: %s\r\n' "$day" "$hour" > "$headers"
 case "$expected" in '?part=clock') printf 'X-Dashboard-Part: clock\r\nX-Dashboard-X: %s\r\nX-Dashboard-Y: %s\r\n' "${TEST_CLOCK%:*}" "${TEST_CLOCK#*:}" >> "$headers" ;; '?part=weather') printf 'X-Dashboard-Part: weather\r\nX-Dashboard-X: %s\r\nX-Dashboard-Y: %s\r\n' "${TEST_WEATHER%:*}" "${TEST_WEATHER#*:}" >> "$headers" ;; esac
 printf 'image' > "$image"
 `)
