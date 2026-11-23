@@ -50,6 +50,8 @@ TIMEZONE_OFFSET=8
 - `HOST_PORT`：服务器对外端口，容器内固定为 `8080`。
 - `CITY_NAME`：填写城市名，如 `南宁` 或 `苏州`；程序会自动查询对应的天气数据。同名地区可使用 `省/城市`，例如 `广西/南宁`。
 - `TIMEZONE_OFFSET`：相对 UTC 的整小时固定偏移，中国为 `8`；不自动处理夏令时。
+- `OPENCODE_GO_API_KEY`（可选）：OpenCode 控制台创建的只读 service account key（`oc_sk_...`，需具备 usage read 权限），用于展示订阅用量。只保存在服务端 `.env`，不要写进 Kindle 配置或提交到 Git。
+- `OPENCODE_USAGE_INTERVAL`（可选）：OpenCode 用量轮询间隔，默认 `300` 秒。
 
 ### 2. 下载并启动
 
@@ -61,6 +63,8 @@ docker compose up -d
 ```
 
 用浏览器打开 `http://服务器IP:8080/screen.png` 查看。如果修改了 `HOST_PORT`，请使用对应端口；服务器防火墙需允许 Kindle 访问该端口，服务端也需要能够访问中国天气网。
+
+配置 `OPENCODE_GO_API_KEY` 后，可访问 `http://服务器IP:8080/screen.png?page=opencode&layout=landscape` 预览 OpenCode Go 用量页；`GET /api/opencode/usage` 返回脱敏后的用量快照，便于排查。横屏客户端可直接在屏幕左右滑动切换首页与用量页。
 
 ### 3. 查看、更新和停止
 
@@ -104,7 +108,7 @@ docker compose down         # 停止并移除容器
 - 触摸不会被看板拦截，仍可能触发 Kindle 原有界面。当前触摸设备路径针对上述 Paperwhite 3，其他型号需自行验证。设备重启后需要从 KUAL 再次启动看板。
 - 整分钟刷新以 Kindle 的系统时钟为准；画面中的时间来自服务端。两台设备的时钟应保持准确，时区配置也应符合使用地区。已检查的 Paperwhite 3 系统带网络校时功能；实际能否校时取决于网络及设备配置。
 
-服务端提供 `GET /screen.png` 和 `GET /api/display`；访问根路径 `/` 返回 404 属正常情况。浏览器横屏预览地址为 `http://服务器IP:端口/screen.png?layout=landscape`。服务本身没有访问认证，请限制在可信网络内访问。
+服务端提供 `GET /screen.png`、`GET /api/display` 和 `GET /api/opencode/usage`；访问根路径 `/` 返回 404 属正常情况。浏览器横屏预览地址为 `http://服务器IP:端口/screen.png?layout=landscape`，翻页参数为 `&page=home|opencode`。服务本身没有访问认证，请限制在可信网络内访问。
 
 ## Kindle 网络设置工具
 

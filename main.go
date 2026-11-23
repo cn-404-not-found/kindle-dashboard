@@ -9,6 +9,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	xdraw "golang.org/x/image/draw"
@@ -384,8 +385,15 @@ func screenHandler(w http.ResponseWriter, r *http.Request) {
 	landscape := r.Header.Get("X-Dashboard-Layout") == "landscape-v1" || r.URL.Query().Get("layout") == "landscape"
 	var pngBytes []byte
 	var err error
+	page := dashboardPage{Name: dashboardPageHome, Index: 1, Total: 1, Prev: dashboardPageHome, Next: dashboardPageHome}
 	if landscape {
-		pngBytes, err = renderLandscapeDashboard(data)
+		var ok bool
+		page, ok = resolveDashboardPage(r.URL.Query().Get("page"))
+		if !ok {
+			http.Error(w, "unknown page", http.StatusNotFound)
+			return
+		}
+		pngBytes, err = renderDashboardPage(page, data, time.Now().In(appLoc))
 	} else {
 		pngBytes, err = renderDashboardWithTop(data, localClock, layoutTop)
 	}
@@ -425,7 +433,16 @@ func screenHandler(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("X-Dashboard-Hour", date.Format("20060102")+data.TimeStr[:2])
 		}
 		w.Header().Set("X-Dashboard-Partial-Version", "1")
+		w.Header().Set("X-Dashboard-Page", page.Name)
+		w.Header().Set("X-Dashboard-Pages", strconv.Itoa(page.Total))
+		w.Header().Set("X-Dashboard-Page-Index", strconv.Itoa(page.Index))
+		w.Header().Set("X-Dashboard-Prev-Page", page.Prev)
+		w.Header().Set("X-Dashboard-Next-Page", page.Next)
 		if part := r.URL.Query().Get("part"); part != "" {
+			if !dashboardPageSupportsPartial(page.Name) {
+				http.Error(w, "page does not support partial updates", http.StatusBadRequest)
+				return
+			}
 			width, height := r.Header.Get("png-width"), r.Header.Get("png-height")
 			if !(width == "1072" && height == "1448") && !(width == "758" && height == "1024") {
 				http.Error(w, "unsupported partial-update framebuffer", http.StatusBadRequest)
@@ -544,6 +561,20 @@ func apiDisplayHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// opencodeUsageHandler 返回脱敏后的 OpenCode Go 用量快照，便于部署后排查。
+// 响应不包含密钥；密钥只存在于服务端环境变量中。
+func opencodeUsageHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	if err := json.NewEncoder(w).Encode(opencodeUsage.snapshot()); err != nil {
+		http.Error(w, "encode failed: "+err.Error(), http.StatusInternalServerError)
+	}
+}
+
 func main() {
 	if len(os.Args) == 3 && os.Args[1] == "--local-calendar" {
 		if err := writeLocalCalendar(os.Args[2], time.Now().In(time.FixedZone("UTC+8", 8*60*60))); err != nil {
@@ -555,9 +586,11 @@ func main() {
 	// 根据配置时区偏移构造固定时区（中国默认 UTC+8）；看板时间以配置为准，不受宿主时区影响。
 	appLoc = time.FixedZone(fmt.Sprintf("UTC%+d", cfg.TimezoneOffset), cfg.TimezoneOffset*3600)
 	go runWeatherRefresh()
+	startOpencodeUsageRefresh(context.Background())
 	http.HandleFunc("/screen.png", screenHandler)
 	http.HandleFunc("/clock-tiles.tar", clockTilesHandler)
 	http.HandleFunc("/api/display", apiDisplayHandler)
+	http.HandleFunc("/api/opencode/usage", opencodeUsageHandler)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	log.Printf("Kindle dashboard backend listening on %s", addr)
