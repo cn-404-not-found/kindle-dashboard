@@ -16,6 +16,14 @@ next_page=
 usage_revision=
 displayed_revision=
 last_full=0
+article_id=
+article_page=1
+article_total=1
+article_activity=0
+article_timeout=${KINDLE_ARTICLE_TIMEOUT:-180}
+case "$article_timeout" in ''|*[!0-9]*) article_timeout=180 ;; esac
+next_refresh=0
+request_handled=0
 page_request=$TMP_DIR/page-request
 rm -f "$page_request"
 swipe_pid=
@@ -39,6 +47,9 @@ case "$width:$height" in
   758:1024) clock_x=602; clock_y=38; weather_x=96; weather_y=38; news_x=25; news_y=480; pageheader_x=670; pageheader_y=438 ;;
   *) echo "Unsupported framebuffer: $width x $height" >&2; exit 1 ;;
 esac
+touch_max_x=${KINDLE_TOUCH_MAX_X:-$width}
+touch_max_y=${KINDLE_TOUCH_MAX_Y:-$height}
+case "$touch_max_x:$touch_max_y" in ''|*[!0-9:]*|:*|*:) touch_max_x=$width; touch_max_y=$height ;; esac
 
 header() { awk -v key="$1" 'tolower($1)==tolower(key ":") {gsub("\r", "", $2); print $2; exit}' "$TMP_DIR/headers"; }
 valid_metadata() {
@@ -62,6 +73,9 @@ valid_metadata() {
 fetch() {
   part=$1
   query="?page=$page"
+  if [ "$page" = news_detail ] && [ -n "$article_id" ]; then
+    query="${query}&id=${article_id}&p=${article_page}"
+  fi
   [ -n "$part" ] && query="$query&part=$part"
   curl -fsS --connect-timeout 10 --max-time 45 -D "$TMP_DIR/headers" -o "$TMP_DIR/image.png" \
     -H "png-width: $width" -H "png-height: $height" -H 'X-Dashboard-Layout: landscape-v1' \
@@ -74,6 +88,17 @@ read_page_nav() {
   case "$page_index" in ''|*[!0-9]*) page_index=1 ;; esac
   next_page=$(header X-Dashboard-Next-Page)
   prev_page=$(header X-Dashboard-Prev-Page)
+  if [ "$page" = news_detail ]; then
+    hdr_id=$(header X-Dashboard-Article-Id)
+    case "$hdr_id" in ''|*[!a-zA-Z0-9_-]*) ;; *) article_id=$hdr_id ;; esac
+    hdr_page=$(header X-Dashboard-Article-Page)
+    case "$hdr_page" in ''|*[!0-9]*) hdr_page=1 ;; esac
+    hdr_total=$(header X-Dashboard-Article-Total)
+    case "$hdr_total" in ''|*[!0-9]*) hdr_total=1 ;; esac
+    article_page=$hdr_page
+    article_total=$hdr_total
+    article_activity=$(date +%s)
+  fi
 }
 show_full() {
   if ! fetch ''; then echo 'Full image unavailable or server lacks partial support.' >&2; return 1; fi
@@ -84,6 +109,7 @@ show_full() {
   displayed_revision=$usage_revision
   read_page_nav
   last_full=$(date +%s)
+  next_refresh=$((last_full + 60 - last_full % 60))
 }
 
 # show_quick 在两次整页刷新之间更新全部内容：不清屏，避免每分钟闪烁。
@@ -121,11 +147,94 @@ show_header_patch() {
 
 displayed_day=
 displayed_hour=
+open_article() {
+  target_id=$1; target_page=$2
+  case "$target_id" in ''|*[!a-zA-Z0-9_-]*) return 1 ;; esac
+  case "$target_page" in ''|*[!0-9]*) target_page=1 ;; esac
+  same_article=0
+  [ "$page" = news_detail ] && [ "$article_id" = "$target_id" ] && same_article=1
+  prev_page_state=$page; prev_id=$article_id; prev_ap=$article_page; prev_at=$article_total
+  page=news_detail; article_id=$target_id; article_page=$target_page
+  if [ "$same_article" -eq 1 ]; then
+    if fetch '' && eips -g "$TMP_DIR/image.png" -x 0 -y 0; then
+      displayed_day=$current_day
+      displayed_hour=$current_hour
+      read_page_nav
+      return 0
+    fi
+  else
+    if show_full; then
+      return 0
+    fi
+  fi
+  page=$prev_page_state; article_id=$prev_id; article_page=$prev_ap; article_total=$prev_at
+  echo "Failed to open article $target_id page $target_page." >&2
+  return 1
+}
+
+return_home() {
+  [ "$page" = home ] && return 0
+  prev_page_state=$page
+  page=home
+  if show_full; then
+    article_id=
+    article_page=1
+    article_total=1
+    echo "Returned to home." >&2
+  else
+    page=$prev_page_state
+    echo "Return to home failed; keeping $page." >&2
+  fi
+}
+
+resolve_tap() {
+  raw_x=$1; raw_y=$2
+  case "$raw_x:$raw_y" in ''|*[!0-9:]*|:*|*:) return 0 ;; esac
+  tap_url="${url}/api/tap?page=${page}&x=${raw_x}&y=${raw_y}&w=${touch_max_x}&h=${touch_max_y}"
+  if [ "$page" = news_detail ]; then
+    tap_url="${tap_url}&id=${article_id}&p=${article_page}&total=${article_total}"
+  fi
+  resp=$(curl -fsS --connect-timeout 5 --max-time 10 "$tap_url" 2>/dev/null) || return 0
+  set -- $resp
+  case "$1" in
+    open) open_article "$2" "${3:-1}" ;;
+    home) return_home ;;
+    *) [ "$page" = news_detail ] && article_activity=$(date +%s) ;;
+  esac
+}
+
 apply_page_request() {
+  request_handled=0
   [ -f "$page_request" ] || return 0
   request=$(cat "$page_request" 2>/dev/null)
   rm -f "$page_request"
-  case "$request" in next) target=$next_page ;; prev) target=$prev_page ;; *) return 0 ;; esac
+  request_handled=1
+  set -- $request
+  case "$1" in
+    tap)
+      resolve_tap "$2" "$3"
+      return 0
+      ;;
+    next|prev) ;;
+    *) return 0 ;;
+  esac
+  if [ "$page" = news_detail ]; then
+    if [ "$1" = next ]; then
+      if [ "$article_page" -lt "$article_total" ]; then
+        open_article "$article_id" $((article_page + 1))
+      else
+        article_activity=$(date +%s)
+      fi
+    else
+      if [ "$article_page" -gt 1 ]; then
+        open_article "$article_id" $((article_page - 1))
+      else
+        return_home
+      fi
+    fi
+    return 0
+  fi
+  case "$1" in next) target=$next_page ;; prev) target=$prev_page ;; *) return 0 ;; esac
   case "$target" in ''|*[!a-z0-9_-]*) return 0 ;; esac
   [ "$target" = "$page" ] && return 0
   previous=$page
@@ -146,45 +255,52 @@ while :; do
       network_ensure_online
     fi
     apply_page_request
-    if [ -z "$displayed_day" ]; then
-      show_full || echo 'Full display failed; retrying.' >&2
-    elif [ "$page" = home ] || [ "$page" = calendar ]; then
-      show_patch clock "$clock_x" "$clock_y"
-      rc=$?
-      if [ "$rc" -eq 2 ]; then
-        show_full || echo 'Date change redraw failed; retrying.' >&2
-      elif [ "$rc" -ne 0 ]; then
-        echo 'Clock update failed; retaining previous display.' >&2
-      else
-        full_done=0
-        if [ "$current_hour" != "$displayed_hour" ]; then
-          show_patch weather "$weather_x" "$weather_y"
-          rc=$?
-          if [ "$rc" -eq 0 ]; then displayed_hour=$current_hour
-          elif [ "$rc" -eq 2 ]; then
-            show_full || echo 'Date change redraw failed.' >&2
-            full_done=1
-          else echo 'Weather update failed; retrying next minute.' >&2; fi
-        fi
-        if [ "$full_done" -eq 0 ] && [ "$page" = home ] && [ -n "$usage_revision" ] && [ "$usage_revision" != "$displayed_revision" ]; then
-          show_patch news "$news_x" "$news_y"
-          rc=$?
-          if [ "$rc" -eq 0 ]; then displayed_revision=$usage_revision
-          elif [ "$rc" -eq 2 ]; then show_full || echo 'Date change redraw failed.' >&2
-          else echo 'News update failed; retrying next minute.' >&2; fi
-        fi
+    now=$(date +%s)
+    if [ "$page" = news_detail ]; then
+      if [ $((now - article_activity)) -ge "$article_timeout" ]; then
+        return_home
       fi
-    else
-      now=$(date +%s)
-      if [ $((now - last_full)) -ge 300 ]; then
-        show_full || echo 'Page refresh failed; retaining previous display.' >&2
-      else
-        show_header_patch
+    elif [ -z "$displayed_day" ]; then
+      show_full || echo 'Full display failed; retrying.' >&2
+    elif [ "$request_handled" -eq 0 ] || [ "$now" -ge "$next_refresh" ]; then
+      if [ "$page" = home ] || [ "$page" = calendar ]; then
+        show_patch clock "$clock_x" "$clock_y"
         rc=$?
         if [ "$rc" -eq 2 ]; then
           show_full || echo 'Date change redraw failed; retrying.' >&2
         elif [ "$rc" -ne 0 ]; then
-          echo 'Page header update failed; retaining previous display.' >&2
+          echo 'Clock update failed; retaining previous display.' >&2
+        else
+          full_done=0
+          if [ "$current_hour" != "$displayed_hour" ]; then
+            show_patch weather "$weather_x" "$weather_y"
+            rc=$?
+            if [ "$rc" -eq 0 ]; then displayed_hour=$current_hour
+            elif [ "$rc" -eq 2 ]; then
+              show_full || echo 'Date change redraw failed.' >&2
+              full_done=1
+            else echo 'Weather update failed; retrying next minute.' >&2; fi
+          fi
+          if [ "$full_done" -eq 0 ] && [ "$page" = home ] && [ -n "$usage_revision" ] && [ "$usage_revision" != "$displayed_revision" ]; then
+            show_patch news "$news_x" "$news_y"
+            rc=$?
+            if [ "$rc" -eq 0 ]; then displayed_revision=$usage_revision
+            elif [ "$rc" -eq 2 ]; then show_full || echo 'Date change redraw failed.' >&2
+            else echo 'News update failed; retrying next minute.' >&2; fi
+          fi
+        fi
+      else
+        now=$(date +%s)
+        if [ $((now - last_full)) -ge 300 ]; then
+          show_full || echo 'Page refresh failed; retaining previous display.' >&2
+        else
+          show_header_patch
+          rc=$?
+          if [ "$rc" -eq 2 ]; then
+            show_full || echo 'Date change redraw failed; retrying.' >&2
+          elif [ "$rc" -ne 0 ]; then
+            echo 'Page header update failed; retaining previous display.' >&2
+          fi
         fi
       fi
     fi
@@ -192,6 +308,14 @@ while :; do
     echo 'Invalid server address.' >&2
   fi
   now=$(date +%s)
-  delay=$((60 - now % 60))
+  if [ "$page" = news_detail ]; then
+    remain=$((article_activity + article_timeout - now))
+    [ "$remain" -lt 1 ] && remain=1
+    delay=$remain
+    [ "$delay" -gt 30 ] && delay=30
+  else
+    delay=$((60 - now % 60))
+    next_refresh=$((now + delay))
+  fi
   landscape_sleep "$delay"
 done

@@ -16,6 +16,8 @@
 
 横屏在线模式支持左右滑动翻页：首页向左滑进入下一页，向右滑返回上一页；每次翻页由服务端返回整页图片并完整刷新一次。翻页读取 `/dev/input/event1`，不会拦截设备原有触摸事件。设置 `KINDLE_PAGE_SWIPE=0` 可关闭滑动翻页；`KINDLE_SWIPE_AXIS=y` 是横屏旋转后的默认轴，`KINDLE_SWIPE_THRESHOLD`（默认 180）调整触发距离。当前页面由服务端响应头 `X-Dashboard-Next-Page` / `X-Dashboard-Prev-Page` 决定，新增页面不需要改客户端。
 
+在热榜首页直接轻点右侧任意一条资讯标题可进入全屏正文阅读页（`news_detail`）；阅读页支持左右滑或轻点底栏「上一页 / 下一页」翻页、轻点左上「← 返回看板」回到首页，连续无操作 `KINDLE_ARTICLE_TIMEOUT` 秒（默认 `180` 秒 = 3 分钟）会自动返回首页。设置 `KINDLE_NEWS_TAP=0` 可关闭点击进入正文，`KINDLE_TAP_THRESHOLD`（默认 `60`）调整轻点位移容差；如需校准触摸屏最大值，可设置 `KINDLE_TOUCH_MAX_X` / `KINDLE_TOUCH_MAX_Y`。
+
 看板运行时可在 5 秒内连续短按电源键 4 次，停止看板并返回主页；该操作使用 Paperwhite 3 的 `/dev/input/event0`，其他设备需验证。
 
 ## 离线时钟模式

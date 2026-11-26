@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -297,4 +298,307 @@ printf 'image' > "$image"
 	if lines[0] != "-c" || !strings.Contains(lines[1], "-g") || !strings.Contains(lines[2], "-x 852 -y 55") {
 		t.Fatalf("unexpected paint schedule: %v", lines)
 	}
+}
+
+func TestLandscapePartialTapOpenPaginateReturn(t *testing.T) {
+	root := t.TempDir()
+	bin := filepath.Join(root, "bin")
+	if err := os.Mkdir(bin, 0755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(path, value string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(value), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(root, "server-settings.sh"), "#!/bin/sh\necho http://example.test\n")
+	write(filepath.Join(root, "landscape-ui.sh"), "landscape_ui_start() { return 0; }\nlandscape_ui_cleanup() { exit 0; }\nlandscape_sleep() { sleep \"$1\" & landscape_sleep_pid=$!; wait \"$landscape_sleep_pid\"; [ -n \"$landscape_sleep_pid\" ] && kill \"$landscape_sleep_pid\" 2>/dev/null; [ -n \"$landscape_sleep_pid\" ] && wait \"$landscape_sleep_pid\" 2>/dev/null; landscape_sleep_pid=; }\n")
+	write(filepath.Join(root, "network-health.sh"), "network_keep_awake() { return 0; }\nnetwork_ensure_online() { return 0; }\n")
+	write(filepath.Join(bin, "eips"), `#!/bin/sh
+if [ "$1" = -i ]; then printf 'xres: 758\nyres: 1024\n'; else echo "$*" >> "$TEST_LOG"; fi
+`)
+	write(filepath.Join(bin, "curl"), `#!/bin/sh
+headers=; image=
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -D) headers=$2; shift 2 ;;
+    -o) image=$2; shift 2 ;;
+    -H|--max-time|--connect-timeout) shift 2 ;;
+    -fsS|-s|-S|-f) shift ;;
+    *) url=$1; shift ;;
+  esac
+done
+echo "$url" >> "$TEST_URLS"
+case "$url" in
+  *"/api/tap"*)
+    case "$url" in
+      *"page=home"*"x=650&y=120"*) printf 'open abc123def456 1\n' ;;
+      *"page=news_detail"*"x=700&y=80"*) printf 'home\n' ;;
+      *) printf 'noop\n' ;;
+    esac
+    exit 0
+    ;;
+esac
+page=home; ap=1
+case "$url" in *"page=news_detail"*) page=news_detail ;; esac
+case "$url" in *"&p=2"*) ap=2 ;; esac
+printf 'X-Dashboard-Layout: landscape-v1\r\nX-Dashboard-Partial-Version: 1\r\nX-Dashboard-Page: %s\r\nX-Dashboard-Pages: 3\r\nX-Dashboard-Page-Index: 1\r\nX-Dashboard-Prev-Page: calendar\r\nX-Dashboard-Next-Page: opencode\r\nX-Dashboard-Date: 2026-11-26\r\nX-Dashboard-Hour: 2026112617\r\nX-Dashboard-Usage-Revision: aaaaaaaaaaaaaaaa\r\n' "$page" > "$headers"
+if [ "$page" = news_detail ]; then
+  printf 'X-Dashboard-Article-Id: abc123def456\r\nX-Dashboard-Article-Page: %s\r\nX-Dashboard-Article-Total: 2\r\n' "$ap" >> "$headers"
+fi
+printf 'image' > "$image"
+`)
+
+	path, err := filepath.Abs("kindle-client/dashboard-extension/landscape-partial.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := filepath.Join(root, "state")
+	logPath := filepath.Join(root, "draws")
+	urlLog := filepath.Join(root, "urls")
+	cmd := exec.Command("sh", path)
+	cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"),
+		"KINDLE_DASHBOARD_DIR="+root, "KINDLE_PARTIAL_STATE="+state,
+		"KINDLE_PAGE_SWIPE=0", "TEST_LOG="+logPath, "TEST_URLS="+urlLog)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = cmd.Process.Kill(); _, _ = cmd.Process.Wait() }()
+
+	waitLines := func(targetFile string, want int) []string {
+		t.Helper()
+		deadline := time.Now().Add(6 * time.Second)
+		for time.Now().Before(deadline) {
+			data, _ := os.ReadFile(targetFile)
+			txt := strings.TrimSpace(string(data))
+			if txt != "" {
+				lines := strings.Split(txt, "\n")
+				if len(lines) >= want {
+					return lines
+				}
+			}
+			time.Sleep(30 * time.Millisecond)
+		}
+		data, _ := os.ReadFile(targetFile)
+		t.Fatalf("timeout waiting %d lines in %s, got:\n%s\nstderr:\n%s", want, targetFile, string(data), stderr.String())
+		return nil
+	}
+	sendReq := func(req string) {
+		t.Helper()
+		tmp := filepath.Join(state, "page-request.tmp")
+		dst := filepath.Join(state, "page-request")
+		if err := os.WriteFile(tmp, []byte(req+"\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(tmp, dst); err != nil {
+			t.Fatal(err)
+		}
+		if err := cmd.Process.Signal(syscall.SIGUSR1); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// 1. Initial home full render (-c, -g).
+	waitLines(logPath, 2)
+	// 2. Tap news item -> full open page 1 (-c, -g).
+	sendReq("tap 650 120")
+	waitLines(logPath, 4)
+	// 3. Swipe next -> quick flip page 2 (-g -x 0 -y 0, no -c).
+	sendReq("next")
+	lines := waitLines(logPath, 5)
+	if strings.Contains(lines[4], "-c") || !strings.Contains(lines[4], "-x 0 -y 0") {
+		t.Fatalf("page 2 flip should use quick refresh without -c, got %q", lines[4])
+	}
+	// 4. Tap top-left -> return home (-c, -g).
+	sendReq("tap 700 80")
+	waitLines(logPath, 7)
+	// 5. Tap blank area -> /api/tap returns noop, zero extra redraws.
+	urlsBefore := len(waitLines(urlLog, 4))
+	sendReq("tap 100 100")
+	waitLines(urlLog, urlsBefore+1)
+	time.Sleep(150 * time.Millisecond)
+
+	_ = cmd.Process.Signal(syscall.SIGTERM)
+	_, _ = cmd.Process.Wait()
+
+	finalDraws := strings.Split(strings.TrimSpace(mustReadFile(t, logPath)), "\n")
+	if len(finalDraws) != 7 {
+		t.Fatalf("noop tap must not trigger extra redraws, got %d draws: %v", len(finalDraws), finalDraws)
+	}
+	urls := mustReadFile(t, urlLog)
+	if !strings.Contains(urls, "/api/tap?page=home&x=650&y=120&w=758&h=1024") ||
+		!strings.Contains(urls, "/screen.png?page=news_detail&id=abc123def456&p=1") ||
+		!strings.Contains(urls, "/screen.png?page=news_detail&id=abc123def456&p=2") {
+		t.Fatalf("missing expected requests in:\n%s", urls)
+	}
+}
+
+func TestLandscapePartialArticleAutoTimeout(t *testing.T) {
+	root := t.TempDir()
+	bin := filepath.Join(root, "bin")
+	if err := os.Mkdir(bin, 0755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(path, value string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(value), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(root, "server-settings.sh"), "#!/bin/sh\necho http://example.test\n")
+	write(filepath.Join(root, "landscape-ui.sh"), "landscape_ui_start() { return 0; }\nlandscape_ui_cleanup() { exit 0; }\nlandscape_sleep() { sleep 0.25; }\n")
+	write(filepath.Join(root, "network-health.sh"), "network_keep_awake() { return 0; }\nnetwork_ensure_online() { return 0; }\n")
+	write(filepath.Join(bin, "eips"), `#!/bin/sh
+if [ "$1" = -i ]; then printf 'xres: 758\nyres: 1024\n'; else echo "$*" >> "$TEST_LOG"; fi
+`)
+	write(filepath.Join(bin, "curl"), `#!/bin/sh
+headers=; image=
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -D) headers=$2; shift 2 ;;
+    -o) image=$2; shift 2 ;;
+    -H|--max-time|--connect-timeout) shift 2 ;;
+    -fsS|-s|-S|-f) shift ;;
+    *) url=$1; shift ;;
+  esac
+done
+case "$url" in
+  *"/api/tap"*) printf 'open abc123def456 1\n'; exit 0 ;;
+esac
+page=home
+case "$url" in *"page=news_detail"*) page=news_detail ;; esac
+printf 'X-Dashboard-Layout: landscape-v1\r\nX-Dashboard-Partial-Version: 1\r\nX-Dashboard-Page: %s\r\nX-Dashboard-Pages: 3\r\nX-Dashboard-Page-Index: 1\r\nX-Dashboard-Prev-Page: calendar\r\nX-Dashboard-Next-Page: opencode\r\nX-Dashboard-Date: 2026-11-26\r\nX-Dashboard-Hour: 2026112617\r\n' "$page" > "$headers"
+if [ "$page" = news_detail ]; then
+  printf 'X-Dashboard-Article-Id: abc123def456\r\nX-Dashboard-Article-Page: 1\r\nX-Dashboard-Article-Total: 1\r\n' >> "$headers"
+fi
+printf 'image' > "$image"
+`)
+
+	path, err := filepath.Abs("kindle-client/dashboard-extension/landscape-partial.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := filepath.Join(root, "state")
+	logPath := filepath.Join(root, "draws")
+	cmd := exec.Command("sh", path)
+	cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"),
+		"KINDLE_DASHBOARD_DIR="+root, "KINDLE_PARTIAL_STATE="+state,
+		"KINDLE_PAGE_SWIPE=0", "KINDLE_ARTICLE_TIMEOUT=1", "TEST_LOG="+logPath)
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = cmd.Process.Kill(); _, _ = cmd.Process.Wait() }()
+
+	waitDrawCount := func(want int) {
+		t.Helper()
+		deadline := time.Now().Add(6 * time.Second)
+		for time.Now().Before(deadline) {
+			data, _ := os.ReadFile(logPath)
+			txt := strings.TrimSpace(string(data))
+			if txt != "" && len(strings.Split(txt, "\n")) >= want {
+				return
+			}
+			time.Sleep(40 * time.Millisecond)
+		}
+		data, _ := os.ReadFile(logPath)
+		t.Fatalf("timeout waiting %d draws, got:\n%s", want, string(data))
+	}
+
+	waitDrawCount(2) // initial home
+	_ = os.WriteFile(filepath.Join(state, "page-request"), []byte("tap 650 120\n"), 0644)
+	_ = cmd.Process.Signal(syscall.SIGUSR1)
+	waitDrawCount(4) // article opened
+	// After >= 1s idle in news_detail, client should auto-return to home (-c, -g => total >= 6).
+	waitDrawCount(6)
+}
+
+func TestTouchSwipeDetectsTapAndSwipe(t *testing.T) {
+	dir := t.TempDir()
+	fifo := filepath.Join(dir, "event1")
+	if err := syscall.Mkfifo(fifo, 0600); err != nil {
+		t.Fatal(err)
+	}
+	script, err := filepath.Abs("kindle-client/dashboard-extension/touch-swipe.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := filepath.Join(dir, "state")
+	cmd := exec.Command("sh", script, fifo, state, "999999")
+	cmd.Env = append(os.Environ(), "KINDLE_TAP_DEBOUNCE=0", "KINDLE_SWIPE_DEBOUNCE=0")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = cmd.Process.Kill(); _, _ = cmd.Process.Wait() }()
+
+	w, err := os.OpenFile(fifo, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+
+	sendEv := func(evType, code uint16, value int32) {
+		var buf [16]byte
+		binary.LittleEndian.PutUint16(buf[8:10], evType)
+		binary.LittleEndian.PutUint16(buf[10:12], code)
+		binary.LittleEndian.PutUint32(buf[12:16], uint32(value))
+		if _, err := w.Write(buf[:]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	readReq := func() string {
+		t.Helper()
+		reqPath := filepath.Join(state, "page-request")
+		deadline := time.Now().Add(4 * time.Second)
+		for time.Now().Before(deadline) {
+			if data, err := os.ReadFile(reqPath); err == nil {
+				_ = os.Remove(reqPath)
+				return strings.TrimSpace(string(data))
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		t.Fatalf("timeout waiting for %s", reqPath)
+		return ""
+	}
+
+	// 1. Short tap with BTN_TOUCH=1 following X/Y (must not reset start_x/start_y).
+	sendEv(3, 57, 0)
+	sendEv(3, 53, 520)
+	sendEv(3, 54, 740)
+	sendEv(1, 330, 1)
+	sendEv(3, 53, 525)
+	sendEv(3, 57, -1)
+	sendEv(1, 330, 0)
+	if got := readReq(); got != "tap 525 740" {
+		t.Fatalf("tap 1 got %q, want %q", got, "tap 525 740")
+	}
+
+	// 2. Repeated tap at exact same X where evdev only emits Y.
+	sendEv(3, 57, 1)
+	sendEv(3, 54, 742)
+	sendEv(3, 57, -1)
+	if got := readReq(); got != "tap 525 742" {
+		t.Fatalf("tap 2 got %q, want %q", got, "tap 525 742")
+	}
+
+	// 3. Swipe left (dy <= -180 => next).
+	sendEv(3, 57, 2)
+	sendEv(3, 53, 500)
+	sendEv(3, 54, 800)
+	sendEv(3, 54, 550)
+	sendEv(3, 57, -1)
+	if got := readReq(); got != "next" {
+		t.Fatalf("swipe next got %q, want next", got)
+	}
+}
+
+func mustReadFile(t *testing.T, path string) string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }

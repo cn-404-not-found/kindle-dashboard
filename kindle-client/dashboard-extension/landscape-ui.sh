@@ -33,5 +33,7 @@ landscape_ui_cleanup() {
 landscape_sleep() {
   sleep "$1" & landscape_sleep_pid=$!
   wait "$landscape_sleep_pid"
+  [ -n "$landscape_sleep_pid" ] && kill "$landscape_sleep_pid" 2>/dev/null
+  [ -n "$landscape_sleep_pid" ] && wait "$landscape_sleep_pid" 2>/dev/null
   landscape_sleep_pid=
 }

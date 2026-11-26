@@ -7,9 +7,10 @@ package main
 import "time"
 
 const (
-	dashboardPageHome     = "home"
-	dashboardPageOpencode = "opencode"
-	dashboardPageCalendar = "calendar"
+	dashboardPageHome       = "home"
+	dashboardPageOpencode   = "opencode"
+	dashboardPageCalendar   = "calendar"
+	dashboardPageNewsDetail = "news_detail"
 )
 
 // dashboardPageNames 是横屏客户端的页面顺序。
@@ -25,9 +26,19 @@ type dashboardPage struct {
 }
 
 // resolveDashboardPage 解析 page 参数；空值回退首页，未知页面返回 false。
+// news_detail 为按需点击进入的独立阅读页，不参与日常 3 页滑动轮换。
 func resolveDashboardPage(requested string) (dashboardPage, bool) {
 	if requested == "" {
 		requested = dashboardPageHome
+	}
+	if requested == dashboardPageNewsDetail {
+		return dashboardPage{
+			Name:  dashboardPageNewsDetail,
+			Index: 1,
+			Total: 1,
+			Prev:  dashboardPageHome,
+			Next:  dashboardPageHome,
+		}, true
 	}
 	for i, name := range dashboardPageNames {
 		if name != requested {

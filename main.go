@@ -378,13 +378,19 @@ func dashboardLayoutTop(localClock bool, requestedLayout string) float64 {
 // screenHandler 处理 GET /screen.png：
 // 每次请求动态获取数据 → 调用 RenderDashboard 生成 PNG → 直接返回字节流。
 func screenHandler(w http.ResponseWriter, r *http.Request) {
-	data := fetchDashboardData()
-
 	localClock := r.URL.Query().Get("clock") == "local"
 	layoutTop := dashboardLayoutTop(localClock, r.Header.Get("X-Dashboard-Layout"))
 	landscape := r.Header.Get("X-Dashboard-Layout") == "landscape-v1" || r.URL.Query().Get("layout") == "landscape"
+	var data DashboardData
 	var pngBytes []byte
 	var err error
+	var articleID string
+	var articlePage, articleTotal int
+	loc := appLoc
+	if loc == nil {
+		loc = time.FixedZone("UTC+8", 8*3600)
+	}
+	now := time.Now().In(loc)
 	page := dashboardPage{Name: dashboardPageHome, Index: 1, Total: 1, Prev: dashboardPageHome, Next: dashboardPageHome}
 	if landscape {
 		var ok bool
@@ -393,8 +399,32 @@ func screenHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "unknown page", http.StatusNotFound)
 			return
 		}
-		pngBytes, err = renderDashboardPage(page, data, time.Now().In(appLoc))
+		if page.Name == dashboardPageNewsDetail {
+			articleID = strings.TrimSpace(r.URL.Query().Get("id"))
+			reqPage, _ := strconv.Atoi(r.URL.Query().Get("p"))
+			if reqPage <= 0 {
+				reqPage = 1
+			}
+			item, found := techNews.findItemByID(articleID)
+			var body string
+			var isFull bool
+			if found {
+				body, isFull = resolveArticleContent(r.Context(), item)
+			} else {
+				item = NewsItem{
+					ID:          articleID,
+					SourceLabel: "科技热榜",
+					Title:       "该资讯已更新或不存在",
+				}
+				body = "该条目可能已随热榜刷新下线，请轻点左上角「返回看板」回到首页查看最新内容。"
+			}
+			pngBytes, articlePage, articleTotal, err = renderNewsArticlePage(item, body, isFull, reqPage)
+		} else {
+			data = fetchDashboardData()
+			pngBytes, err = renderDashboardPage(page, data, now)
+		}
 	} else {
+		data = fetchDashboardData()
 		pngBytes, err = renderDashboardWithTop(data, localClock, layoutTop)
 	}
 	if err != nil {
@@ -427,10 +457,15 @@ func screenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if landscape {
-		date := parseDate(data.DateStr)
+		date := now
+		timeStr := now.Format("15:04")
+		if page.Name != dashboardPageNewsDetail {
+			date = parseDate(data.DateStr)
+			timeStr = data.TimeStr
+		}
 		w.Header().Set("X-Dashboard-Date", date.Format("2006-01-02"))
-		if len(data.TimeStr) >= 2 {
-			w.Header().Set("X-Dashboard-Hour", date.Format("20060102")+data.TimeStr[:2])
+		if len(timeStr) >= 2 {
+			w.Header().Set("X-Dashboard-Hour", date.Format("20060102")+timeStr[:2])
 		}
 		w.Header().Set("X-Dashboard-Partial-Version", "1")
 		w.Header().Set("X-Dashboard-Page", page.Name)
@@ -444,6 +479,10 @@ func screenHandler(w http.ResponseWriter, r *http.Request) {
 		} else if page.Name == dashboardPageHome {
 			// 只随热榜展示内容变化；客户端据此决定是否需要局刷右侧热榜。
 			w.Header().Set("X-Dashboard-Usage-Revision", techNewsRevision(techNews.snapshot()))
+		} else if page.Name == dashboardPageNewsDetail {
+			w.Header().Set("X-Dashboard-Article-Id", articleID)
+			w.Header().Set("X-Dashboard-Article-Page", strconv.Itoa(articlePage))
+			w.Header().Set("X-Dashboard-Article-Total", strconv.Itoa(articleTotal))
 		}
 		if part := r.URL.Query().Get("part"); part != "" {
 			if !dashboardPageSupportsPartial(page.Name, part) {
@@ -613,6 +652,7 @@ func main() {
 	http.HandleFunc("/api/display", apiDisplayHandler)
 	http.HandleFunc("/api/opencode/usage", opencodeUsageHandler)
 	http.HandleFunc("/api/news", techNewsHandler)
+	http.HandleFunc("/api/tap", tapHandler)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	log.Printf("Kindle dashboard backend listening on %s", addr)

@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -49,13 +50,26 @@ type NewsSourceConfig struct {
 	FilterAds bool
 }
 
+// NewsItem 表示单条科技资讯及其标题、来源、链接、发布日期和 RSS 自带正文。
+type NewsItem struct {
+	ID            string `json:"id"`
+	SourceKey     string `json:"source_key"`
+	SourceLabel   string `json:"source_label"`
+	Title         string `json:"title"`
+	Link          string `json:"link,omitempty"`
+	PublishedAt   string `json:"published_at,omitempty"`
+	FeedBody      string `json:"-"`
+	FeedTruncated bool   `json:"-"`
+}
+
 // NewsGroup 表示单个来源分组的采集结果，供 JSON 接口和页面渲染使用。
 type NewsGroup struct {
-	Key       string    `json:"key"`
-	Label     string    `json:"label"`
-	Titles    []string  `json:"titles"`
-	FetchedAt time.Time `json:"fetched_at,omitempty"`
-	Err       string    `json:"error,omitempty"`
+	Key       string     `json:"key"`
+	Label     string     `json:"label"`
+	Titles    []string   `json:"titles"`
+	Items     []NewsItem `json:"items,omitempty"`
+	FetchedAt time.Time  `json:"fetched_at,omitempty"`
+	Err       string     `json:"error,omitempty"`
 }
 
 // TechNewsSnapshot 是横屏首页右侧展示与 /api/news 响应使用的快照。
@@ -123,12 +137,16 @@ var newsAdKeywords = []string{
 	"天猫超市", "下单立减", "折合",
 }
 
+const newsMaxItemHistory = 50
+
 // techNewsStore 保护后台抓取线程与 HTTP 渲染之间的并发读写。
 type techNewsStore struct {
-	mu        sync.RWMutex
-	sources   []NewsSourceConfig
-	byKey     map[string]NewsGroup
-	fetchedAt time.Time
+	mu          sync.RWMutex
+	sources     []NewsSourceConfig
+	byKey       map[string]NewsGroup
+	itemHistory map[string]NewsItem
+	itemOrder   []string
+	fetchedAt   time.Time
 }
 
 var techNews techNewsStore
@@ -141,19 +159,58 @@ func (s *techNewsStore) setSources(sources []NewsSourceConfig) {
 	for _, src := range sources {
 		s.byKey[src.Key] = NewsGroup{Key: src.Key, Label: src.Label}
 	}
+	s.itemHistory = make(map[string]NewsItem)
+	s.itemOrder = nil
 	s.fetchedAt = time.Time{}
 }
 
 func (s *techNewsStore) updateSource(src NewsSourceConfig, titles []string, now time.Time) {
+	items := make([]NewsItem, 0, len(titles))
+	for _, title := range titles {
+		items = append(items, NewsItem{
+			ID:          makeNewsItemID(src.Key, "", title),
+			SourceKey:   src.Key,
+			SourceLabel: src.Label,
+			Title:       title,
+		})
+	}
+	s.updateSourceItems(src, items, now)
+}
+
+func (s *techNewsStore) updateSourceItems(src NewsSourceConfig, items []NewsItem, now time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.byKey == nil {
 		s.byKey = make(map[string]NewsGroup)
 	}
+	if s.itemHistory == nil {
+		s.itemHistory = make(map[string]NewsItem)
+	}
+	titles := make([]string, len(items))
+	copied := make([]NewsItem, len(items))
+	for i, item := range items {
+		item.SourceKey = src.Key
+		item.SourceLabel = src.Label
+		if item.ID == "" {
+			item.ID = makeNewsItemID(src.Key, item.Link, item.Title)
+		}
+		titles[i] = item.Title
+		copied[i] = item
+		if _, exists := s.itemHistory[item.ID]; !exists {
+			s.itemOrder = append(s.itemOrder, item.ID)
+		}
+		s.itemHistory[item.ID] = item
+	}
+	for len(s.itemOrder) > newsMaxItemHistory {
+		oldest := s.itemOrder[0]
+		s.itemOrder = s.itemOrder[1:]
+		delete(s.itemHistory, oldest)
+	}
 	s.byKey[src.Key] = NewsGroup{
 		Key:       src.Key,
 		Label:     src.Label,
-		Titles:    append([]string(nil), titles...),
+		Titles:    titles,
+		Items:     copied,
 		FetchedAt: now,
 	}
 	s.fetchedAt = now
@@ -187,6 +244,7 @@ func (s *techNewsStore) snapshot() TechNewsSnapshot {
 			group = NewsGroup{Key: src.Key, Label: src.Label}
 		} else {
 			group.Titles = append([]string(nil), group.Titles...)
+			group.Items = append([]NewsItem(nil), group.Items...)
 		}
 		if len(group.Titles) > 0 {
 			out.Available = true
@@ -194,6 +252,40 @@ func (s *techNewsStore) snapshot() TechNewsSnapshot {
 		out.Groups = append(out.Groups, group)
 	}
 	return out
+}
+
+// findItemByID 按 ID 查找当前或最近缓存的资讯条目；未找到返回 false。
+func (s *techNewsStore) findItemByID(id string) (NewsItem, bool) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return NewsItem{}, false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, src := range s.sources {
+		if group, ok := s.byKey[src.Key]; ok {
+			for _, item := range group.Items {
+				if item.ID == id {
+					return item, true
+				}
+			}
+		}
+	}
+	if s.itemHistory != nil {
+		item, ok := s.itemHistory[id]
+		return item, ok
+	}
+	return NewsItem{}, false
+}
+
+// makeNewsItemID 基于来源键与链接（无链接时退回标题）生成 12 位小写十六进制稳定 ID。
+func makeNewsItemID(sourceKey, link, title string) string {
+	basis := strings.TrimSpace(link)
+	if basis == "" {
+		basis = strings.TrimSpace(title)
+	}
+	sum := sha256.Sum256([]byte(sourceKey + "|" + basis))
+	return hex.EncodeToString(sum[:6])
 }
 
 // techNewsRevision 返回仅随页面可见内容变化的短哈希。
@@ -327,13 +419,13 @@ func refreshTechNews(ctx context.Context, sources []NewsSourceConfig, store *tec
 		wg.Add(1)
 		go func(s NewsSourceConfig) {
 			defer wg.Done()
-			titles, err := fetchNewsSource(ctx, s)
+			items, err := fetchNewsSourceItems(ctx, s)
 			if err != nil {
 				log.Printf("科技资讯抓取失败 [%s]: %v", s.Label, err)
 				store.failSource(s, err)
 				return
 			}
-			store.updateSource(s, titles, time.Now())
+			store.updateSourceItems(s, items, time.Now())
 		}(src)
 	}
 	wg.Wait()
@@ -341,6 +433,15 @@ func refreshTechNews(ctx context.Context, sources []NewsSourceConfig, store *tec
 
 // fetchNewsSource 拉取并解析单个科技源的最新标题（最多 2 条）。
 func fetchNewsSource(ctx context.Context, src NewsSourceConfig) ([]string, error) {
+	items, err := fetchNewsSourceItems(ctx, src)
+	if err != nil {
+		return nil, err
+	}
+	return newsItemTitles(items), nil
+}
+
+// fetchNewsSourceItems 拉取并解析单个科技源的最新资讯条目（含标题、链接、日期与 RSS 正文）。
+func fetchNewsSourceItems(ctx context.Context, src NewsSourceConfig) ([]NewsItem, error) {
 	if !isValidHTTPURL(src.URL) {
 		return nil, fmt.Errorf("资讯源 URL 非法")
 	}
@@ -369,23 +470,63 @@ func fetchNewsSource(ctx context.Context, src NewsSourceConfig) ([]string, error
 		return nil, fmt.Errorf("响应超过 %d 字节", newsMaxResponseBytes)
 	}
 	if src.Kind == "v2ex_json" {
-		return parseV2EXHotJSON(body, src)
+		return parseV2EXHotJSONItems(body, src)
 	}
-	return parseNewsFeed(body, src)
+	return parseNewsFeedItems(body, src)
 }
 
-// parseNewsFeed 流式解析 RSS 2.0 / Atom XML，仅提取 item/entry 直属的 title。
+func newsItemTitles(items []NewsItem) []string {
+	titles := make([]string, len(items))
+	for i, item := range items {
+		titles[i] = item.Title
+	}
+	return titles
+}
+
+// parseNewsFeed 流式解析 RSS 2.0 / Atom XML，仅提取 item/entry 直属的标题。
 func parseNewsFeed(body []byte, src NewsSourceConfig) ([]string, error) {
+	items, err := parseNewsFeedItems(body, src)
+	if err != nil {
+		return nil, err
+	}
+	return newsItemTitles(items), nil
+}
+
+// parseNewsFeedItems 流式解析 RSS 2.0 / Atom XML，提取每个 item/entry 的标题、链接、日期和正文。
+func parseNewsFeedItems(body []byte, src NewsSourceConfig) ([]NewsItem, error) {
 	dec := xml.NewDecoder(bytes.NewReader(body))
 	dec.Strict = false
 	dec.AutoClose = xml.HTMLAutoClose
 	dec.Entity = xml.HTMLEntity
 
 	var stack []string
-	var capturing bool
-	var titleDepth int
-	var titleBuf strings.Builder
-	titles := make([]string, 0, newsItemsPerSource)
+	var inItem bool
+	var itemDepth int
+	var captureField string
+	var captureDepth int
+	var captureBuf strings.Builder
+
+	var curTitle string
+	var curLink string
+	var curLinkAlternate bool
+	var curDate string
+	var curEncoded string
+	var curContent string
+	var curDesc string
+	var curSummary string
+
+	resetItem := func() {
+		curTitle = ""
+		curLink = ""
+		curLinkAlternate = false
+		curDate = ""
+		curEncoded = ""
+		curContent = ""
+		curDesc = ""
+		curSummary = ""
+	}
+
+	items := make([]NewsItem, 0, newsItemsPerSource)
 	seen := make(map[string]bool, newsItemsPerSource)
 
 	for {
@@ -394,7 +535,7 @@ func parseNewsFeed(body []byte, src NewsSourceConfig) ([]string, error) {
 			break
 		}
 		if err != nil {
-			if len(titles) > 0 {
+			if len(items) > 0 {
 				break
 			}
 			return nil, fmt.Errorf("解析 XML 失败: %w", err)
@@ -410,71 +551,213 @@ func parseNewsFeed(body []byte, src NewsSourceConfig) ([]string, error) {
 				parent = stack[len(stack)-1]
 			}
 			stack = append(stack, local)
-			if !capturing && local == "title" && (parent == "item" || parent == "entry") {
-				capturing = true
-				titleDepth = len(stack)
-				titleBuf.Reset()
+
+			if !inItem && (local == "item" || local == "entry") {
+				inItem = true
+				itemDepth = len(stack)
+				captureField = ""
+				resetItem()
+				continue
+			}
+			if !inItem {
+				continue
+			}
+			if captureField != "" {
+				continue
+			}
+			if parent == "item" || parent == "entry" {
+				switch local {
+				case "title", "link", "pubdate", "date", "published", "updated", "encoded", "content", "description", "summary":
+					if local == "link" {
+						href, rel := "", ""
+						for _, attr := range t.Attr {
+							switch strings.ToLower(attr.Name.Local) {
+							case "href":
+								href = strings.TrimSpace(attr.Value)
+							case "rel":
+								rel = strings.ToLower(strings.TrimSpace(attr.Value))
+							}
+						}
+						if href != "" && (rel == "" || rel == "alternate") && (!curLinkAlternate || rel == "alternate") {
+							curLink = href
+							if rel == "alternate" {
+								curLinkAlternate = true
+							}
+						}
+					}
+					captureField = local
+					captureDepth = len(stack)
+					captureBuf.Reset()
+				}
 			}
 		case xml.CharData:
-			if capturing {
-				titleBuf.Write(t)
+			if captureField != "" {
+				captureBuf.Write(t)
 			}
 		case xml.EndElement:
+			local := strings.ToLower(t.Name.Local)
 			if len(stack) > 0 {
 				stack = stack[:len(stack)-1]
 			}
-			if capturing && len(stack) < titleDepth {
-				capturing = false
-				titles = appendNewsTitle(titles, seen, titleBuf.String(), src.FilterAds)
-				titleBuf.Reset()
-				if len(titles) >= newsItemsPerSource {
-					return titles, nil
+			if captureField != "" && len(stack) < captureDepth {
+				val := captureBuf.String()
+				captureBuf.Reset()
+				switch captureField {
+				case "title":
+					if curTitle == "" {
+						curTitle = val
+					}
+				case "link":
+					if curLink == "" && strings.TrimSpace(val) != "" {
+						curLink = strings.TrimSpace(val)
+					}
+				case "pubdate", "date", "published", "updated":
+					if curDate == "" {
+						curDate = parseFeedDate(val)
+					}
+				case "encoded":
+					curEncoded = val
+				case "content":
+					curContent = val
+				case "description":
+					curDesc = val
+				case "summary":
+					curSummary = val
+				}
+				captureField = ""
+			} else if captureField != "" && isBodyField(captureField) && isBreakEndTag(local) {
+				// 兼容未转义直接嵌入 XHTML/HTML 段落标签的 Atom/RSS 内容块。
+				captureBuf.WriteByte('\n')
+			}
+			if inItem && len(stack) < itemDepth {
+				inItem = false
+				item := buildNewsItem(src, curTitle, curLink, curDate, curEncoded, curContent, curDesc, curSummary)
+				resetItem()
+				if item.Title == "" {
+					continue
+				}
+				if src.FilterAds && isAdNewsTitle(item.Title) {
+					continue
+				}
+				key := strings.ToLower(item.Title)
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+				items = append(items, item)
+				if len(items) >= newsItemsPerSource {
+					return items, nil
 				}
 			}
 		}
 	}
-	if len(titles) == 0 {
+	if len(items) == 0 {
 		return nil, fmt.Errorf("未解析到有效标题")
 	}
-	return titles, nil
+	return items, nil
+}
+
+func isBodyField(field string) bool {
+	return field == "encoded" || field == "content" || field == "description" || field == "summary"
+}
+
+func isBreakEndTag(local string) bool {
+	switch local {
+	case "br", "p", "div", "li", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "tr":
+		return true
+	default:
+		return false
+	}
+}
+
+func buildNewsItem(src NewsSourceConfig, rawTitle, rawLink, date string, bodies ...string) NewsItem {
+	title := cleanNewsTitle(rawTitle)
+	if title == "" {
+		return NewsItem{}
+	}
+	link := strings.TrimSpace(rawLink)
+	if !isValidHTTPURL(link) {
+		link = ""
+	}
+	bestBody := ""
+	bestTrunc := false
+	bestRunes := 0
+	for _, rawBody := range bodies {
+		if strings.TrimSpace(rawBody) == "" {
+			continue
+		}
+		plain, trunc := extractPlainParagraphs(rawBody)
+		n := len([]rune(plain))
+		if n > bestRunes || (bestBody == "" && trunc) {
+			bestBody = plain
+			bestTrunc = trunc
+			bestRunes = n
+		}
+	}
+	return NewsItem{
+		ID:            makeNewsItemID(src.Key, link, title),
+		SourceKey:     src.Key,
+		SourceLabel:   src.Label,
+		Title:         title,
+		Link:          link,
+		PublishedAt:   date,
+		FeedBody:      bestBody,
+		FeedTruncated: bestTrunc,
+	}
 }
 
 // parseV2EXHotJSON 解析 V2EX 热门主题 JSON 接口。
 func parseV2EXHotJSON(body []byte, src NewsSourceConfig) ([]string, error) {
+	items, err := parseV2EXHotJSONItems(body, src)
+	if err != nil {
+		return nil, err
+	}
+	return newsItemTitles(items), nil
+}
+
+// parseV2EXHotJSONItems 解析 V2EX 热门主题 JSON 接口并返回完整条目信息。
+func parseV2EXHotJSONItems(body []byte, src NewsSourceConfig) ([]NewsItem, error) {
 	var topics []struct {
-		Title string `json:"title"`
+		Title   string `json:"title"`
+		URL     string `json:"url"`
+		Content string `json:"content"`
+		Created int64  `json:"created"`
 	}
 	if err := json.Unmarshal(body, &topics); err != nil {
 		return nil, fmt.Errorf("解析 JSON 失败: %w", err)
 	}
-	titles := make([]string, 0, newsItemsPerSource)
+	items := make([]NewsItem, 0, newsItemsPerSource)
 	seen := make(map[string]bool, newsItemsPerSource)
 	for _, topic := range topics {
-		titles = appendNewsTitle(titles, seen, topic.Title, src.FilterAds)
-		if len(titles) >= newsItemsPerSource {
+		date := ""
+		if topic.Created > 0 {
+			loc := appLoc
+			if loc == nil {
+				loc = time.FixedZone("UTC+8", 8*3600)
+			}
+			date = time.Unix(topic.Created, 0).In(loc).Format("2006-01-02")
+		}
+		item := buildNewsItem(src, topic.Title, topic.URL, date, topic.Content)
+		if item.Title == "" {
+			continue
+		}
+		if src.FilterAds && isAdNewsTitle(item.Title) {
+			continue
+		}
+		key := strings.ToLower(item.Title)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		items = append(items, item)
+		if len(items) >= newsItemsPerSource {
 			break
 		}
 	}
-	if len(titles) == 0 {
+	if len(items) == 0 {
 		return nil, fmt.Errorf("未解析到有效标题")
 	}
-	return titles, nil
-}
-
-func appendNewsTitle(titles []string, seen map[string]bool, raw string, filterAds bool) []string {
-	title := cleanNewsTitle(raw)
-	if title == "" {
-		return titles
-	}
-	if filterAds && isAdNewsTitle(title) {
-		return titles
-	}
-	key := strings.ToLower(title)
-	if seen[key] {
-		return titles
-	}
-	seen[key] = true
-	return append(titles, title)
+	return items, nil
 }
 
 // cleanNewsTitle 解码 HTML 实体，清除 Emoji / 变体选择符 / 控制字符并规整空白。
@@ -524,4 +807,102 @@ func isAdNewsTitle(title string) bool {
 		}
 	}
 	return false
+}
+
+var (
+	reNewsScriptTag  = regexp.MustCompile(`(?is)<(script|style|noscript)[^>]*>.*?</\1>`)
+	reNewsHTMLComment = regexp.MustCompile(`(?s)<!--.*?-->`)
+	reNewsBlockTag   = regexp.MustCompile(`(?i)<br\s*/?>|</(?:p|div|li|h[1-6]|blockquote|tr|section|article|pre)>`)
+	reNewsAnyTag     = regexp.MustCompile(`(?s)<[^>]+>`)
+)
+
+// extractPlainParagraphs 将 HTML 片段清洗为保留段落换行的纯文本，并识别常见摘要截断提示。
+func extractPlainParagraphs(raw string) (string, bool) {
+	if strings.TrimSpace(raw) == "" {
+		return "", false
+	}
+	s := reNewsHTMLComment.ReplaceAllString(raw, " ")
+	s = reNewsScriptTag.ReplaceAllString(s, " ")
+	s = reNewsBlockTag.ReplaceAllString(s, "\n")
+	s = reNewsAnyTag.ReplaceAllString(s, "")
+	s = html.UnescapeString(s)
+
+	var paragraphs []string
+	truncated := false
+	for _, rawLine := range strings.Split(s, "\n") {
+		line := cleanNewsParagraphLine(rawLine)
+		if line == "" {
+			continue
+		}
+		for _, marker := range []string{"点击查看全文", "查看全文", "阅读原文", "查看原文"} {
+			if line == marker || line == "["+marker+"]" {
+				truncated = true
+				line = ""
+				break
+			}
+			if strings.HasSuffix(line, marker) {
+				truncated = true
+				line = strings.TrimSpace(strings.TrimSuffix(line, marker))
+				break
+			}
+		}
+		if line != "" {
+			paragraphs = append(paragraphs, line)
+		}
+	}
+	return strings.Join(paragraphs, "\n\n"), truncated
+}
+
+func cleanNewsParagraphLine(raw string) string {
+	var b strings.Builder
+	b.Grow(len(raw))
+	lastSpace := true
+	for _, r := range raw {
+		if unicode.IsSpace(r) {
+			if !lastSpace {
+				b.WriteByte(' ')
+				lastSpace = true
+			}
+			continue
+		}
+		if unicode.IsControl(r) || isNewsNoiseRune(r) {
+			continue
+		}
+		b.WriteRune(r)
+		lastSpace = false
+	}
+	return strings.TrimSpace(b.String())
+}
+
+var feedDateLayouts = []string{
+	time.RFC1123Z,
+	time.RFC1123,
+	time.RFC822Z,
+	time.RFC822,
+	time.RFC3339Nano,
+	time.RFC3339,
+	"Mon, 2 Jan 2006 15:04:05 -0700",
+	"Mon, 2 Jan 2006 15:04:05 MST",
+	"2006-01-02 15:04:05 -0700",
+	"2006-01-02 15:04:05",
+	"2006-01-02T15:04:05-0700",
+	"2006-01-02T15:04:05",
+	"2006-01-02",
+}
+
+func parseFeedDate(raw string) string {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return ""
+	}
+	loc := appLoc
+	if loc == nil {
+		loc = time.FixedZone("UTC+8", 8*3600)
+	}
+	for _, layout := range feedDateLayouts {
+		if t, err := time.ParseInLocation(layout, s, loc); err == nil {
+			return t.In(loc).Format("2006-01-02")
+		}
+	}
+	return ""
 }
