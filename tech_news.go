@@ -496,7 +496,7 @@ func parseNewsFeed(body []byte, src NewsSourceConfig) ([]string, error) {
 func parseNewsFeedItems(body []byte, src NewsSourceConfig) ([]NewsItem, error) {
 	dec := xml.NewDecoder(bytes.NewReader(body))
 	dec.Strict = false
-	dec.AutoClose = xml.HTMLAutoClose
+	dec.AutoClose = []string{"br", "hr", "img"}
 	dec.Entity = xml.HTMLEntity
 
 	var stack []string
@@ -596,8 +596,16 @@ func parseNewsFeedItems(body []byte, src NewsSourceConfig) ([]NewsItem, error) {
 			}
 		case xml.EndElement:
 			local := strings.ToLower(t.Name.Local)
-			if len(stack) > 0 {
-				stack = stack[:len(stack)-1]
+			popped := false
+			for i := len(stack) - 1; i >= 0; i-- {
+				if stack[i] == local {
+					stack = stack[:i]
+					popped = true
+					break
+				}
+			}
+			if !popped {
+				continue
 			}
 			if captureField != "" && len(stack) < captureDepth {
 				val := captureBuf.String()

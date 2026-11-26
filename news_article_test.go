@@ -199,11 +199,11 @@ func TestHitTestHomeNewsAndArticleDetail(t *testing.T) {
 	snap := TechNewsSnapshot{
 		Available: true,
 		Groups: []NewsGroup{
-			{Key: "g1", Label: "Solidot", Items: []NewsItem{{ID: "id0"}, {ID: "id1"}}},
-			{Key: "g2", Label: "少数派", Items: []NewsItem{{ID: "id2"}, {ID: "id3"}}},
-			{Key: "g3", Label: "IT之家", Items: []NewsItem{{ID: "id4"}, {ID: "id5"}}},
-			{Key: "g4", Label: "极客公园", Items: []NewsItem{{ID: "id6"}, {ID: "id7"}}},
-			{Key: "g5", Label: "V2EX", Items: []NewsItem{{ID: "id8"}, {ID: "id9"}}},
+			{Key: "g1", Label: "Solidot", Titles: []string{"t0", "t1"}, Items: []NewsItem{{ID: "id0"}, {ID: "id1"}}},
+			{Key: "g2", Label: "少数派", Titles: []string{"t2", "t3"}, Items: []NewsItem{{ID: "id2"}, {ID: "id3"}}},
+			{Key: "g3", Label: "IT之家", Titles: []string{"t4", "t5"}, Items: []NewsItem{{ID: "id4"}, {ID: "id5"}}},
+			{Key: "g4", Label: "极客公园", Titles: []string{"t6", "t7"}, Items: []NewsItem{{ID: "id6"}, {ID: "id7"}}},
+			{Key: "g5", Label: "V2EX", Titles: []string{"t8", "t9"}, Items: []NewsItem{{ID: "id8"}, {ID: "id9"}}},
 		},
 	}
 

@@ -32,7 +32,8 @@ cleanup_client() {
   landscape_ui_cleanup
 }
 trap cleanup_client TERM INT HUP
-trap 'page_requested=1' USR1
+page_requested=0
+trap 'page_requested=1; [ -n "${landscape_sleep_pid:-}" ] && kill "$landscape_sleep_pid" 2>/dev/null' USR1
 
 if [ "${KINDLE_PAGE_SWIPE:-1}" != 0 ]; then
   /bin/sh "$DIR/touch-swipe.sh" "${KINDLE_TOUCH_DEVICE:-/dev/input/event1}" "$TMP_DIR" "$$" \
@@ -204,6 +205,7 @@ resolve_tap() {
 }
 
 apply_page_request() {
+  page_requested=0
   request_handled=0
   [ -f "$page_request" ] || return 0
   request=$(cat "$page_request" 2>/dev/null)
@@ -317,5 +319,7 @@ while :; do
     delay=$((60 - now % 60))
     next_refresh=$((now + delay))
   fi
-  landscape_sleep "$delay"
+  if [ "${page_requested:-0}" -eq 0 ] && [ ! -f "$page_request" ]; then
+    landscape_sleep "$delay"
+  fi
 done
