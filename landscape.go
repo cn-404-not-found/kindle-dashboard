@@ -44,7 +44,10 @@ func renderLandscapeDashboard(data DashboardData) (result []byte, err error) {
 	for i, day := range []string{"一", "二", "三", "四", "五", "六", "日"} {
 		r.text(left+(float64(i)+.5)*colW, 166, day, 25, black, true, .5)
 	}
-	line(left, top, right, top, 3, black)
+	dc.SetColor(black)
+	dc.SetLineWidth(3)
+	dc.DrawLine(left, top, right, top)
+	dc.Stroke()
 	rowH := 832.0 / 6
 	for row := 0; row < 6; row++ {
 		for col := 0; col < 7; col++ {
