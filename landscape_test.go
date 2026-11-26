@@ -58,6 +58,7 @@ func TestLandscapePartialImagesUseFramebufferCoordinates(t *testing.T) {
 	}{
 		{"clock", image.Rect(852, 55, 1020, 599)},
 		{"weather", image.Rect(182, 55, 701, 599)},
+		{"news", image.Rect(36, 680, 1032, 1410)},
 		{"pageheader", image.Rect(948, 620, 1048, 1400)},
 	} {
 		full.SetGray(tc.rect.Min.X, tc.rect.Min.Y, color.Gray{Y: 123})
@@ -72,6 +73,7 @@ func TestLandscapePartialImagesUseFramebufferCoordinates(t *testing.T) {
 	}{
 		{"clock", image.Rect(852, 55, 1020, 599)},
 		{"weather", image.Rect(182, 55, 701, 599)},
+		{"news", image.Rect(36, 680, 1032, 1410)},
 		{"pageheader", image.Rect(948, 620, 1048, 1400)},
 	} {
 		output, rect, err := landscapePartialPNG(buf.Bytes(), tc.part)
@@ -111,6 +113,7 @@ func TestLandscapePartialPW2(t *testing.T) {
 	}{
 		{"clock", image.Rect(602, 38, 722, 424)},
 		{"weather", image.Rect(128, 38, 496, 424)},
+		{"news", image.Rect(25, 480, 730, 998)},
 		{"pageheader", image.Rect(670, 438, 742, 991)},
 	} {
 		data, rect, err := landscapePartialPNG(buf.Bytes(), tc.part)

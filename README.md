@@ -52,6 +52,8 @@ TIMEZONE_OFFSET=8
 - `TIMEZONE_OFFSET`：相对 UTC 的整小时固定偏移，中国为 `8`；不自动处理夏令时。
 - `OPENCODE_GO_API_KEY`（可选）：OpenCode 控制台创建的只读 service account key（`oc_sk_...`，需具备 usage read 权限），用于展示订阅用量。只保存在服务端 `.env`，不要写进 Kindle 配置或提交到 Git。
 - `OPENCODE_USAGE_INTERVAL`（可选）：OpenCode 用量轮询间隔，默认 `60` 秒，最小 `60` 秒。
+- `NEWS_SOURCES`（可选）：横屏首页右侧中文科技热榜源，默认 `solidot,sspai,ithome,geekpark,v2ex`（每源 2 条；也支持 `v2ex-hot`、`ruanyifeng`、`leiphone` 及 `名称=RSS地址`，最多 5 个）。
+- `NEWS_REFRESH_INTERVAL`（可选）：科技热榜刷新间隔，默认 `1800` 秒（30 分钟），最小 `300` 秒。
 
 Compose 通过 `env_file: .env` 注入以上变量，Compose 文件本身只引用文件名，不包含密钥。
 
@@ -66,7 +68,7 @@ docker compose up -d
 
 用浏览器打开 `http://服务器IP:8080/screen.png` 查看。如果修改了 `HOST_PORT`，请使用对应端口；服务器防火墙需允许 Kindle 访问该端口，服务端也需要能够访问中国天气网。
 
-配置 `OPENCODE_GO_API_KEY` 后，可访问 `http://服务器IP:8080/screen.png?page=opencode&layout=landscape` 预览 OpenCode Go 用量页；`GET /api/opencode/usage` 返回脱敏后的用量快照，便于排查。横屏客户端可直接在屏幕左右滑动切换首页与用量页；用量页页头常显当前时间与日期，每分钟只刷新页头，只有百分比、重置时间或状态变化时才重绘正文，每 5 分钟清屏整刷一次以控制墨水屏残影。
+配置 `OPENCODE_GO_API_KEY` 后，可访问 `http://服务器IP:8080/screen.png?page=opencode&layout=landscape` 预览 OpenCode Go 用量页；`GET /api/opencode/usage` 返回脱敏后的用量快照，便于排查。横屏首页默认左栏展示时钟/天气、右栏展示科技热榜精选，可左右滑动切换 `热榜首页 → OpenCode 用量 → 完整月历`；热榜变化时同步更新新版 Kindle 客户端可自动局部刷新右侧，无需整屏闪烁；`GET /api/news` 返回当前热榜缓存快照。用量页页头常显当前时间与日期，每分钟只刷新页头，只有百分比、重置时间或状态变化时才重绘正文，每 5 分钟清屏整刷一次以控制墨水屏残影。
 
 ### 3. 查看、更新和停止
 
@@ -110,7 +112,7 @@ docker compose down         # 停止并移除容器
 - 触摸不会被看板拦截，仍可能触发 Kindle 原有界面。当前触摸设备路径针对上述 Paperwhite 3，其他型号需自行验证。设备重启后需要从 KUAL 再次启动看板。
 - 整分钟刷新以 Kindle 的系统时钟为准；画面中的时间来自服务端。两台设备的时钟应保持准确，时区配置也应符合使用地区。已检查的 Paperwhite 3 系统带网络校时功能；实际能否校时取决于网络及设备配置。
 
-服务端提供 `GET /screen.png`、`GET /api/display` 和 `GET /api/opencode/usage`；访问根路径 `/` 返回 404 属正常情况。浏览器横屏预览地址为 `http://服务器IP:端口/screen.png?layout=landscape`，翻页参数为 `&page=home|opencode`。服务本身没有访问认证，请限制在可信网络内访问。
+服务端提供 `GET /screen.png`、`GET /api/display`、`GET /api/opencode/usage` 和 `GET /api/news`；访问根路径 `/` 返回 404 属正常情况。浏览器横屏预览地址为 `http://服务器IP:端口/screen.png?layout=landscape`，翻页参数为 `&page=home|opencode|calendar`。服务本身没有访问认证，请限制在可信网络内访问。
 
 ## Kindle 网络设置工具
 

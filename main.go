@@ -441,6 +441,9 @@ func screenHandler(w http.ResponseWriter, r *http.Request) {
 		if page.Name == dashboardPageOpencode {
 			// 只随用量展示内容变化；客户端据此决定是否需要重绘正文。
 			w.Header().Set("X-Dashboard-Usage-Revision", opencodeUsageRevision(opencodeUsage.snapshot()))
+		} else if page.Name == dashboardPageHome {
+			// 只随热榜展示内容变化；客户端据此决定是否需要局刷右侧热榜。
+			w.Header().Set("X-Dashboard-Usage-Revision", techNewsRevision(techNews.snapshot()))
 		}
 		if part := r.URL.Query().Get("part"); part != "" {
 			if !dashboardPageSupportsPartial(page.Name, part) {
@@ -579,6 +582,19 @@ func opencodeUsageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// techNewsHandler 返回当前缓存的中文科技热榜快照，便于部署后排查各源状态。
+func techNewsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	if err := json.NewEncoder(w).Encode(techNews.snapshot()); err != nil {
+		http.Error(w, "encode failed: "+err.Error(), http.StatusInternalServerError)
+	}
+}
+
 func main() {
 	if len(os.Args) == 3 && os.Args[1] == "--local-calendar" {
 		if err := writeLocalCalendar(os.Args[2], time.Now().In(time.FixedZone("UTC+8", 8*60*60))); err != nil {
@@ -591,10 +607,12 @@ func main() {
 	appLoc = time.FixedZone(fmt.Sprintf("UTC%+d", cfg.TimezoneOffset), cfg.TimezoneOffset*3600)
 	go runWeatherRefresh()
 	startOpencodeUsageRefresh(context.Background())
+	startTechNewsRefresh(context.Background())
 	http.HandleFunc("/screen.png", screenHandler)
 	http.HandleFunc("/clock-tiles.tar", clockTilesHandler)
 	http.HandleFunc("/api/display", apiDisplayHandler)
 	http.HandleFunc("/api/opencode/usage", opencodeUsageHandler)
+	http.HandleFunc("/api/news", techNewsHandler)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	log.Printf("Kindle dashboard backend listening on %s", addr)

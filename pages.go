@@ -9,10 +9,11 @@ import "time"
 const (
 	dashboardPageHome     = "home"
 	dashboardPageOpencode = "opencode"
+	dashboardPageCalendar = "calendar"
 )
 
 // dashboardPageNames 是横屏客户端的页面顺序。
-var dashboardPageNames = []string{dashboardPageHome, dashboardPageOpencode}
+var dashboardPageNames = []string{dashboardPageHome, dashboardPageOpencode, dashboardPageCalendar}
 
 // dashboardPage 描述一次请求对应的页面位置与相邻页。
 type dashboardPage struct {
@@ -49,16 +50,20 @@ func renderDashboardPage(page dashboardPage, data DashboardData, now time.Time) 
 	switch page.Name {
 	case dashboardPageOpencode:
 		return renderOpencodeDashboard(opencodeUsage.snapshot(), now, page.Index, page.Total)
-	default:
+	case dashboardPageCalendar:
 		return renderLandscapeDashboard(data)
+	default:
+		return renderLandscapeNewsDashboard(data, techNews.snapshot())
 	}
 }
 
 // dashboardPageSupportsPartial 表示该页面的指定区域支持局刷。
-// 首页有时钟/天气两块动态区域；OpenCode 页的页头可单独更新，正文按需整页刷新。
+// 热榜首页支持时钟/天气/右侧热榜局刷；完整月历页支持时钟/天气；OpenCode 页支持页头局刷。
 func dashboardPageSupportsPartial(name, part string) bool {
 	switch name {
 	case dashboardPageHome:
+		return part == "clock" || part == "weather" || part == "news"
+	case dashboardPageCalendar:
 		return part == "clock" || part == "weather"
 	case dashboardPageOpencode:
 		return part == "pageheader"

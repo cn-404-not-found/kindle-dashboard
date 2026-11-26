@@ -35,8 +35,8 @@ fi
 width=$(eips -i 2>/dev/null | sed -n 's/.*xres:[ ]*\([0-9]*\).*/\1/p' | head -1)
 height=$(eips -i 2>/dev/null | sed -n 's/.*yres:[ ]*\([0-9]*\).*/\1/p' | head -1)
 case "$width:$height" in
-  1072:1448) clock_x=852; clock_y=55; weather_x=182; weather_y=55; pageheader_x=948; pageheader_y=620 ;;
-  758:1024) clock_x=602; clock_y=38; weather_x=128; weather_y=38; pageheader_x=670; pageheader_y=438 ;;
+  1072:1448) clock_x=852; clock_y=55; weather_x=182; weather_y=55; news_x=36; news_y=680; pageheader_x=948; pageheader_y=620 ;;
+  758:1024) clock_x=602; clock_y=38; weather_x=128; weather_y=38; news_x=25; news_y=480; pageheader_x=670; pageheader_y=438 ;;
   *) echo "Unsupported framebuffer: $width x $height" >&2; exit 1 ;;
 esac
 
@@ -148,19 +148,31 @@ while :; do
     apply_page_request
     if [ -z "$displayed_day" ]; then
       show_full || echo 'Full display failed; retrying.' >&2
-    elif [ "$page" = home ]; then
+    elif [ "$page" = home ] || [ "$page" = calendar ]; then
       show_patch clock "$clock_x" "$clock_y"
       rc=$?
       if [ "$rc" -eq 2 ]; then
         show_full || echo 'Date change redraw failed; retrying.' >&2
       elif [ "$rc" -ne 0 ]; then
         echo 'Clock update failed; retaining previous display.' >&2
-      elif [ "$current_hour" != "$displayed_hour" ]; then
-        show_patch weather "$weather_x" "$weather_y"
-        rc=$?
-        if [ "$rc" -eq 0 ]; then displayed_hour=$current_hour
-        elif [ "$rc" -eq 2 ]; then show_full || echo 'Date change redraw failed.' >&2
-        else echo 'Weather update failed; retrying next minute.' >&2; fi
+      else
+        full_done=0
+        if [ "$current_hour" != "$displayed_hour" ]; then
+          show_patch weather "$weather_x" "$weather_y"
+          rc=$?
+          if [ "$rc" -eq 0 ]; then displayed_hour=$current_hour
+          elif [ "$rc" -eq 2 ]; then
+            show_full || echo 'Date change redraw failed.' >&2
+            full_done=1
+          else echo 'Weather update failed; retrying next minute.' >&2; fi
+        fi
+        if [ "$full_done" -eq 0 ] && [ "$page" = home ] && [ -n "$usage_revision" ] && [ "$usage_revision" != "$displayed_revision" ]; then
+          show_patch news "$news_x" "$news_y"
+          rc=$?
+          if [ "$rc" -eq 0 ]; then displayed_revision=$usage_revision
+          elif [ "$rc" -eq 2 ]; then show_full || echo 'Date change redraw failed.' >&2
+          else echo 'News update failed; retrying next minute.' >&2; fi
+        fi
       fi
     else
       now=$(date +%s)

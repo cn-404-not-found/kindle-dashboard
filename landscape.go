@@ -34,6 +34,55 @@ func renderLandscapeDashboard(data DashboardData) (result []byte, err error) {
 	dc.SetColor(color.White)
 	dc.Clear()
 	r := &renderer{dc: dc, reg: regular, bold: bold, faces: map[faceKey]font.Face{}}
+	drawLandscapeLeftColumn(dc, r, data)
+
+	black, gray, border := color.Black, color.RGBA{70, 70, 70, 255}, color.RGBA{160, 160, 160, 255}
+	date := parseDate(data.DateStr)
+	left, right, top := 691.0, 1393.0, 188.0
+	r.text((left+right)/2, 100, fmt.Sprintf("%d 年 %d 月", date.Year(), date.Month()), 43, black, true, .5)
+	colW := (right - left) / 7
+	for i, day := range []string{"一", "二", "三", "四", "五", "六", "日"} {
+		r.text(left+(float64(i)+.5)*colW, 166, day, 25, black, true, .5)
+	}
+	line(left, top, right, top, 3, black)
+	rowH := 832.0 / 6
+	for row := 0; row < 6; row++ {
+		for col := 0; col < 7; col++ {
+			cell := data.Calendar[row][col]
+			x, y := left+float64(col)*colW, top+float64(row)*rowH
+			num, sub := color.Color(black), color.Color(gray)
+			if cell.IsToday {
+				dc.SetColor(black)
+				dc.DrawRectangle(x, y, colW, rowH)
+				dc.Fill()
+				num = color.White
+				sub = color.RGBA{220, 220, 220, 255}
+			} else {
+				dc.SetColor(border)
+				dc.SetLineWidth(1)
+				if !cell.IsCurrentMonth {
+					dc.SetDash(4, 4)
+					num = color.RGBA{175, 175, 175, 255}
+					sub = num
+				}
+				dc.DrawRectangle(x, y, colW, rowH)
+				dc.Stroke()
+				dc.SetDash()
+			}
+			r.text(x+colW/2, y+65, fmt.Sprint(cell.Day), 46, num, true, .5)
+			r.fitText(x+colW/2, y+104, cell.Lunar, 23, colW-8, sub, false, .5)
+		}
+	}
+	var out bytes.Buffer
+	if err := png.Encode(&out, dc.Image()); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
+
+// drawLandscapeLeftColumn 绘制横屏看板左栏（时间、天气、未来五日、农历/节气）及中缝竖线，
+// 供热榜首页与完整月历页共享同一套左栏坐标，确保时钟/天气局部刷新区完全对齐。
+func drawLandscapeLeftColumn(dc *gg.Context, r *renderer, data DashboardData) {
 	black, gray, border := color.Black, color.RGBA{70, 70, 70, 255}, color.RGBA{160, 160, 160, 255}
 	line := func(x1, y1, x2, y2, w float64, c color.Color) {
 		dc.SetColor(c)
@@ -83,44 +132,4 @@ func renderLandscapeDashboard(data DashboardData) (result []byte, err error) {
 	term, termDate, _ := nextSolarTerm(date)
 	r.fitText(599, 1012, fmt.Sprintf("%s %d月%d日", term, termDate.Month(), termDate.Day()), 32, 280, black, true, 1)
 	line(646, 52, 646, 1020, 2, black)
-	left, right, top := 691.0, 1393.0, 188.0
-	r.text((left+right)/2, 100, fmt.Sprintf("%d 年 %d 月", date.Year(), date.Month()), 43, black, true, .5)
-	colW := (right - left) / 7
-	for i, day := range []string{"一", "二", "三", "四", "五", "六", "日"} {
-		r.text(left+(float64(i)+.5)*colW, 166, day, 25, black, true, .5)
-	}
-	line(left, top, right, top, 3, black)
-	rowH := 832.0 / 6
-	for row := 0; row < 6; row++ {
-		for col := 0; col < 7; col++ {
-			cell := data.Calendar[row][col]
-			x, y := left+float64(col)*colW, top+float64(row)*rowH
-			num, sub := color.Color(black), color.Color(gray)
-			if cell.IsToday {
-				dc.SetColor(black)
-				dc.DrawRectangle(x, y, colW, rowH)
-				dc.Fill()
-				num = color.White
-				sub = color.RGBA{220, 220, 220, 255}
-			} else {
-				dc.SetColor(border)
-				dc.SetLineWidth(1)
-				if !cell.IsCurrentMonth {
-					dc.SetDash(4, 4)
-					num = color.RGBA{175, 175, 175, 255}
-					sub = num
-				}
-				dc.DrawRectangle(x, y, colW, rowH)
-				dc.Stroke()
-				dc.SetDash()
-			}
-			r.text(x+colW/2, y+65, fmt.Sprint(cell.Day), 46, num, true, .5)
-			r.fitText(x+colW/2, y+104, cell.Lunar, 23, colW-8, sub, false, .5)
-		}
-	}
-	var out bytes.Buffer
-	if err := png.Encode(&out, dc.Image()); err != nil {
-		return nil, err
-	}
-	return out.Bytes(), nil
 }

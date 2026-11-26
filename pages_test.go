@@ -11,12 +11,16 @@ import (
 
 func TestResolveDashboardPage(t *testing.T) {
 	home, ok := resolveDashboardPage("")
-	if !ok || home.Name != dashboardPageHome || home.Index != 1 || home.Total != 2 || home.Next != dashboardPageOpencode || home.Prev != dashboardPageOpencode {
+	if !ok || home.Name != dashboardPageHome || home.Index != 1 || home.Total != 3 || home.Next != dashboardPageOpencode || home.Prev != dashboardPageCalendar {
 		t.Fatalf("home = %+v ok=%v", home, ok)
 	}
 	opencode, ok := resolveDashboardPage(dashboardPageOpencode)
-	if !ok || opencode.Index != 2 || opencode.Prev != dashboardPageHome || opencode.Next != dashboardPageHome {
+	if !ok || opencode.Index != 2 || opencode.Total != 3 || opencode.Prev != dashboardPageHome || opencode.Next != dashboardPageCalendar {
 		t.Fatalf("opencode = %+v ok=%v", opencode, ok)
+	}
+	calendar, ok := resolveDashboardPage(dashboardPageCalendar)
+	if !ok || calendar.Index != 3 || calendar.Total != 3 || calendar.Prev != dashboardPageOpencode || calendar.Next != dashboardPageHome {
+		t.Fatalf("calendar = %+v ok=%v", calendar, ok)
 	}
 	if _, ok := resolveDashboardPage("missing"); ok {
 		t.Fatal("unknown page must be rejected")
@@ -24,7 +28,7 @@ func TestResolveDashboardPage(t *testing.T) {
 }
 
 func TestDashboardPageSupportsPartial(t *testing.T) {
-	for _, part := range []string{"clock", "weather"} {
+	for _, part := range []string{"clock", "weather", "news"} {
 		if !dashboardPageSupportsPartial(dashboardPageHome, part) {
 			t.Fatalf("home must support %q patches", part)
 		}
@@ -32,10 +36,20 @@ func TestDashboardPageSupportsPartial(t *testing.T) {
 	if dashboardPageSupportsPartial(dashboardPageHome, "pageheader") {
 		t.Fatal("home must reject pageheader patches")
 	}
+	for _, part := range []string{"clock", "weather"} {
+		if !dashboardPageSupportsPartial(dashboardPageCalendar, part) {
+			t.Fatalf("calendar must support %q patches", part)
+		}
+	}
+	for _, part := range []string{"news", "pageheader"} {
+		if dashboardPageSupportsPartial(dashboardPageCalendar, part) {
+			t.Fatalf("calendar must reject %q patches", part)
+		}
+	}
 	if !dashboardPageSupportsPartial(dashboardPageOpencode, "pageheader") {
 		t.Fatal("opencode page must support pageheader patches")
 	}
-	for _, part := range []string{"clock", "weather", ""} {
+	for _, part := range []string{"clock", "weather", "news", ""} {
 		if dashboardPageSupportsPartial(dashboardPageOpencode, part) {
 			t.Fatalf("opencode page must reject %q patches", part)
 		}
