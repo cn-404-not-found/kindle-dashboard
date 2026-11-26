@@ -267,8 +267,9 @@ func TestTapHandlerAndNewsDetailScreenHandler(t *testing.T) {
 	techNews.updateSourceItems(src, []NewsItem{item}, time.Now())
 
 	// PW2 coordinates corresponding to landscape (lx=980, ly=95) -> first item.
-	rawX := int((1071.0 - 95.0) * 758.0 / 1072.0)
-	rawY := int(980.0 * 1024.0 / 1448.0)
+	lx, ly := 980.0, 95.0
+	rawX := int((1071.0 - ly) * 758.0 / 1072.0)
+	rawY := int(lx * 1024.0 / 1448.0)
 	req := httptest.NewRequest(http.MethodGet, "/api/tap?page=home&w=758&h=1024&x="+itoa(rawX)+"&y="+itoa(rawY), nil)
 	rec := httptest.NewRecorder()
 	tapHandler(rec, req)
