@@ -2,8 +2,8 @@
 
 **Date:** 2026-11-26（Asia/Shanghai）
 **Working directory:** `E:\开发项目\Kindle-dashboard`（Windows）
-**Archived previous handoff:** `continuation.archive.20261126_180157.md`
-**Latest Code Commit (before this doc):** `fa53d689a54a0cade3859670615a2fca9bc7a0f2`（`fa53d68 feat: 调整横屏三页顺序为热榜、月历、OpenCode用量`）
+**Archived previous handoff:** `continuation.archive.20261126_181810.md`
+**Latest Code Commit (before this doc):** `a9b40d5ddc9c9b22692ccddcbcc64ab2672eefb2`（`a9b40d5 fix: 加深资讯正文阅读页字重与墨水屏黑度对比`）
 
 ---
 
@@ -14,7 +14,7 @@ Go HTTP 服务为越狱 Kindle（支持 PW2 `758×1024` 与 PW3 `1072×1448`）�
 ## Tech Stack
 
 - **Backend**: Go 1.25（module `kindle-dashboard`）；`github.com/fogleman/gg`、`golang.org/x/image/font/{opentype,sfnt}`（严禁使用已移除的 `font/truetype`）、`github.com/6tail/lunar-go/calendar`。
-- **Fonts**: 更纱黑体官方 `.ttc`（`Sarasa-Regular.ttc` 必选、`Sarasa-Bold.ttc` 可选），放于运行目录，已被 `.gitignore` 排除且不入库；无字库环境下渲染 PNG 的测试按约定 `t.Skip`。
+- **Fonts**: 更纱黑体官方 `.ttc`（`Sarasa-Regular.ttc` 与 `Sarasa-Bold.ttc`），Dockerfile 内下载 `v1.0.43` `Sarasa-TTC-Unhinted-1.0.43.7z` 解出两份字体放于容器 `/app/fonts/`；本地目录已被 `.gitignore` 排除且不入库；无字库环境下渲染 PNG 的测试按约定 `t.Skip`。
 - **Deployment & CI**: Docker Compose + GitHub Actions（`.github/workflows/container.yml`），自动运行 Linux 全量 `go test ./...`、构建 `linux/amd64` 与 `linux/arm64` 多架构镜像发布至 `ghcr.io/cn-404-not-found/kindle-dashboard:latest` 及提交 SHA 标签，并启动容器抽检 `/screen.png`。
 - **Kindle Client**: KUAL、POSIX `sh`/BusyBox `ash`、`eips`、`curl`、LIPC、`evdev`（`/dev/input/event1` 触摸、`/dev/input/event0` 电源键）。当前主力实机为 **Kindle Paperwhite 2（PW2，`758×1024`）**。
 
@@ -57,7 +57,7 @@ gh run view <run-id> --repo cn-404-not-found/kindle-dashboard --log | Select-Str
 | `tech_news.go` | 5 源中文科技热榜（`solidot,sspai,ithome,geekpark,v2ex`）定时抓取（30 分钟）、广告过滤、`NewsItem` 正文提取与 50 条历史索引。 |
 | `news_page.go` | 首页右侧热榜绘制与 `wrapTwoLines`（ASCII 整词回退 + 中文避头点）。 |
 | `news_article.go` | 正文按需抓取（少数派 `wangEditor-txt` 等容器提取与 2h 缓存）、`rawTouchToLandscape`、热榜与阅读页命中判定及 `/api/tap`。 |
-| `news_article_page.go` | `1448×1072` 全屏正文阅读页（`← 返回看板`、第 1 页大标题+续页紧凑单行标题、`38px` 正文自动分页、翻页底栏、无二维码）。 |
+| `news_article_page.go` | `1448×1072` 全屏正文阅读页（`← 返回看板`、第 1 页 `48px` 大标题+续页 `26px` 粗体深灰单行标题、`36px` 纯黑粗体正文自动分页、加黑按钮边框与底栏、无二维码）。 |
 | `weather.go` / `opencode_usage.go` / `opencode_page.go` | 中国天气网采集缓存与 OpenCode Go 订阅用量页。 |
 | `kindle-client/dashboard-extension/landscape-partial.sh` | PW2/PW3 横屏主循环：每分钟时钟、整点天气（`136:55`/`96:38`）、热榜局刷、轻点 `tap` 调用、阅读页快翻与 3 分钟无操作回首页。 |
 | `kindle-client/dashboard-extension/touch-swipe.sh` | `/dev/input/event1` 滑动翻页与短点（`tap <x> <y>`，`KINDLE_TAP_THRESHOLD=60`）识别，带同轴坐标缓存与 `BTN_TOUCH` 去重。 |
@@ -75,50 +75,57 @@ gh run view <run-id> --repo cn-404-not-found/kindle-dashboard --log | Select-Str
    - 同步将 `part=weather` 局刷矩形下扩为 `136,55..701,599`（PW3 `weather_x=136`，PW2 `weather_x=96`）。
    - 优化 `news_page.go` `wrapTwoLines`：修复 `runes[i] == ' '` 会越过中文误断句的问题，改为沿连续 ASCII/数字/`.`/`-` 词元回退，并增加中文句末/分隔标点避头点（`isClosingPunctRune`）。
 2. **新增「首页点击资讯全屏看正文」及 PW2 触控适配（`279513e` → `adda325` → `4cd2534` → `908906d`）**：
-   - 验证了 5 个默认资讯源的全文可得性：Solidot/IT之家/极客公园/V2EX 的 RSS/Atom 直接带完整正文（其中 `geekpark` ~4800–7100 字）；少数派 RSS 仅带 `查看全文` 导语，直抓 `sspai.com/post/...` 的 `wangEditor-txt` 容器可稳定拿到全文（实测 6746 字，HTTP 200）。
+   - 验证了 5 个默认资讯源的全文可得性：Solidot/IT之家/极客公园/V2EX 的 RSS/Atom 直接带完整正文；少数派 RSS 仅带 `查看全文` 导语，直抓 `sspai.com/post/...` 的 `wangEditor-txt` 容器可稳定拿到全文（实测 6746 字，HTTP 200）。
    - 实现 `tech_news.go` 正文提取、`news_article.go` 按需抓取与 2 小时内存缓存、`/api/tap` 与 `rawTouchToLandscape`（适配 PW2 `758×1024` / PW3 `1072×1448`）、`news_article_page.go` 全屏阅读分页渲染（无二维码）。
-   - 顺带修掉了导致 `IT之家`/`少数派`/`Solidot` 在线上报错 `unexpected end element </link>` 的根因（Go `xml.HTMLAutoClose` 内含 `"link"`），修复后 CI 容器冒烟日志不再报任何源抓取错误。
-   - 升级 `touch-swipe.sh`、`landscape-partial.sh`、`landscape-ui.sh`：支持轻点识别、`noop` 点击仅亮背光不闪屏、页内翻页无全黑闪烁、左上返回按钮与 `KINDLE_ARTICLE_TIMEOUT=180` 秒（3 分钟）自动回首页，并修复 `SIGUSR1` 唤醒竞态与 `landscape_partial_client_test.go` FIFO/客户端端到端回归测试。
+   - 修掉了导致 `IT之家`/`少数派`/`Solidot` 在线上报错 `unexpected end element </link>` 的根因（Go `xml.HTMLAutoClose` 内含 `"link"`），修复后 CI 容器冒烟日志不再报任何源抓取错误。
+   - 升级 `touch-swipe.sh`、`landscape-partial.sh`、`landscape-ui.sh` 并写入用户已挂载的 PW2（`G:\extensions\kindle-dashboard`）：4 个文件已做 `CR=0` 与 SHA256 一致性校验，保留 `server-url.txt`（`27 B`）与 PW2 `menu.json`（`277 B`）。
 3. **调整横屏三页滑动顺序（`fa53d68`）**：
-   - 将 `pages.go` 的 `dashboardPageNames` 改为 `[home, calendar, opencode]`，对应：第 1 页带资讯的时间面板 → 第 2 页带日历的面板 → 第 3 页 OpenCode 用量；同步更新 `pages_test.go` 与 `README.md`。
-4. **更新已连接的 Kindle PW2（`G:\extensions\kindle-dashboard`）**：
-   - 已核对 `G:` 为 PW2 设备（原 `menu.json` 277B 与 `menu-pw2.json` 一致，保留 `server-url.txt` 27B 未动）。
-   - 将纯 LF（`CR=0`）并做过 SHA256 一致性校验的 4 个文件写入覆盖到 `G:\extensions\kindle-dashboard\`：`landscape-partial.sh`（11761 B）、`touch-swipe.sh`（3765 B）、`landscape-ui.sh`（1543 B）、`README.md`（5631 B）。
+   - 将 `pages.go` 的 `dashboardPageNames` 改为 `[home, calendar, opencode]`（1. 带资讯的时间面板 → 2. 带日历的面板 → 3. OpenCode 用量），并更新 `pages_test.go` 与 `README.md`。
+4. **修复 PW2 真机查看资讯正文时字体颜色偏淡（`a9b40d5`）**：
+   - 用户上机测试反馈「查看正文时，字体的颜色是偏淡的，看起来很不好看」。
+   - 根因：`Dockerfile` 打包无 Hinting 的 `Sarasa-Regular.ttc`，此前正文以 `38px` 常规体（`bold = false`）+ `RGB(17,17,17)` 在 `1448×1072` 绘制后再经 `fitToDevice`（`0.707×` `BiLinear`）缩放到 PW2，导致细笔画被双线性插值稀释发灰。
+   - 修改 `news_article_page.go`：正文改为 **`36px` 纯黑 `color.Black` + 粗体 `bold = true`**（`Sarasa-Bold`，`bodyMeasure` 同步按 `bold = true` 测宽，行高 `60px`），标题提升为 `48px`（行高 `62px`，首行基线 `186`），顶栏日期/续页标题（`26px` 粗体 `RGB(40,40,40)`）、底栏提示（`24px` 粗体 `RGB(45,45,45)`）、分隔线（`RGB(150,150,150)` / `RGB(140,140,140)`）及翻页可用按钮边框（`2px` 纯黑）一并加深；本次仅服务端渲染改动，Kindle 端无需再更新。
 
 ## Current State
 
 **Working:**
-- Commit `fa53d68` 已推送至 `origin/main`，[GitHub Actions Run 45794459998](https://github.com/cn-404-not-found/kindle-dashboard/actions/runs/45794459998)（`1m51s`）全绿：
-  - `go test ./...` 通过（`ok kindle-dashboard 14.306s`；含字体 PNG 渲染的用例在无 `.ttc` 字体环境按设计 `t.Skip`，其余单测、handler 与 Linux shell/FIFO 客户端测试全部实际跑通）。
-  - Docker 多架构镜像发布与冒烟验证通过，且 `IT之家`/`少数派`/`Solidot` 在 RSS `<link>` 修复后容器冒烟日志零报错。
-- PW2 客户端 `G:\extensions\kindle-dashboard\` 4 个更新文件已写盘并校验 `CR=0` 与 SHA256 一致；`server-url.txt` 与 PW2 `menu.json` 完整保留。
+- Commit `a9b40d5` 已推送至 `origin/main`，[GitHub Actions Run 45798702130](https://github.com/cn-404-not-found/kindle-dashboard/actions/runs/45798702130)（`1m52s`）全绿：
+  - `go test ./...` 通过（`ok kindle-dashboard 13.459s`；含字体 PNG 渲染的用例在无 `.ttc` 字体环境按设计 `t.Skip`，其余单测、handler 与 Linux shell/FIFO 客户端测试全部实际跑通）。
+  - Docker 多架构镜像发布与冒烟验证通过（`ghcr.io/cn-404-not-found/kindle-dashboard:a9b40d5ddc9c9b22692ccddcbcc64ab2672eefb2`）。
+- **PW2 实机已验证**可通过新版客户端脚本点击新闻进入全屏正文阅读页（并据实机观感发现了正文字体偏淡问题）。
+- PW2 设备端 `landscape-partial.sh`、`touch-swipe.sh`、`landscape-ui.sh`、`README.md` 已是最新版本（无须因 `a9b40d5` 重刷）。
 
 **Broken / Known Issues:**
 - 少数派个别会员付费专栏文章在网页端只有试读段，无法读取付费全文（免费文章均可完整抓取）。
 - GitHub Actions 上的部分国内源若遇到特定海外 CDN/WAF 返回 HTML（而非 XML），会走 `返回了 HTML 页面而非 RSS/Atom` 容错并保留旧缓存；国内 NAS 网络实测 5 源均返回 HTTP 200。
 
-**In Progress (Awaiting User / Device Verification):**
-- 新版服务尚未在用户 NAS Docker 上拉取重启；Kindle PW2 文件已更新在设备存储内，需用户安全弹出设备后重启 `Start landscape online` 进行真机手感验收。
+**In Progress (Awaiting Server Update & On-Device Re-check):**
+- 服务端镜像 `a9b40d5` 刚构建发布，待用户在 NAS 上执行 `docker compose pull && docker compose up -d` 后，在 PW2 上复验加粗纯黑后的正文阅读观感。
 
 ## Pending Tasks
 
-1. 用户在电脑安全弹出 Kindle（`G:`）并拔线。
-2. 服务端执行 `docker compose pull && docker compose up -d` 拉取最新镜像并重启容器。
-3. 在 PW2 的 KUAL 菜单停止旧看板进程后重新启动 `Start landscape online`，真机验证：
-   - 第 1 页「带资讯的时间面板」→ 第 2 页「带日历的面板」→ 第 3 页「OpenCode 用量」切换是否顺畅；
-   - 点击右侧任意新闻全屏看正文（命中准度、翻页、左上返回与 3 分钟自动回首页）；若发现轻点落点存在系统偏差，根据日志微调坐标或 `KINDLE_TOUCH_MAX_X`/`KINDLE_TOUCH_MAX_Y`。
-4. 后续如继续调整 UI 布局或样式，按用户偏好先用渲染预览（`html_render`）给用户看效果，确认满意后再开发提交 GitHub。
+1. 用户在服务端（NAS）执行 `docker compose pull && docker compose up -d` 拉取最新 `a9b40d5` 镜像。
+2. 用户在 PW2 上复验最新全屏正文阅读体验：
+   - 确认 `36px` 纯黑粗体正文及顶栏/底栏在 PW2（`758×1024`）上的黑度与清晰度是否满意（是否还需调整字号、行距或边距）；
+   - 如继续测试三页轮换（`home → calendar → opencode`）、热区准确度、上下翻页、左上角返回与 3 分钟自动回首页遇到任何偏差，按反馈微调。
+3. 后续如继续调整 UI 布局或样式，按用户偏好先用渲染预览（`html_render`）给用户看效果，确认满意后再开发提交 GitHub。
 
 ## Key Technical Decisions
 
+- **阅读页全部重要文本统一采用 `Sarasa-Bold` + 高对比黑/深灰**：因容器字体包是无 Hinting 版 `Sarasa-TTC-Unhinted`，且 PW2 经 `0.707×` 双线性缩放会柔和细笔画，纯文本长文必须使用 `bold = true` + `color.Black` 才能保持 212 PPI 墨水屏的锐利黑度；禁用按钮才使用浅灰。
 - **`news_detail` 独立于三页轮换**：不放入 `dashboardPageNames`，确保日常左右滑动仍是 `home → calendar → opencode` 3 页；仅通过首页轻点进入，在阅读页左上点击或第 1 页右滑返回 `home`。
-- **不添加原文二维码**：按用户明确确认保持阅读页清爽，不占正文空间，正文 38px + 长文分页。
+- **不添加原文二维码**：按用户明确确认保持阅读页清爽，不占正文空间，正文粗体 + 长文分页。
 - **PW2 坐标映射方案**：结合 KOReader `KindlePaperWhite2` 驱动与 `rotate90CW` 实现，PW2 `cyttsp4_mt` 直接按竖屏分辨率 `758×1024`（`rawTouchToLandscape` 支持环境变量 `KINDLE_TOUCH_MAX_X`/`Y` 覆盖）逆算回 `1448×1072` 横屏坐标。
 - **混合正文抓取与缓存隔离**：RSS 自带长文直接从 `techNews` 内存直出；截断条目点击时按需抓取并缓存 `2h`，抓取失败仅临时降级返回导语但不写 `2h` 缓存以便重试。`screenHandler` 对 `page=news_detail` 跳过 `fetchDashboardData()`，避免看新闻时误触发阻塞天气抓取。
 - **轻点左栏不刷新屏幕**：`tap` 若命中 `/api/tap` 返回 `noop` 且未到下分钟刷新时刻，客户端跳过全页/时钟刷新，只由 `touch-light.sh` 点亮背光。
 - **PW2 菜单保留策略**：`G:\extensions\kindle-dashboard\menu.json` 保持 `menu-pw2.json` 内容（277 B），绝不用仓库完整 `menu.json` 覆盖。
 
 ## Gotchas & Traps
+
+**无 Hinting `Sarasa-Regular` 经 `0.707×` 双线性缩放到 PW2（212 PPI）字体偏淡**
+`Dockerfile` 使用 `Sarasa-TTC-Unhinted-1.0.43.7z`，且 PW2 需要从 `1448×1072` 按 `0.707×` `BiLinear` 缩放至 `758×1024`。在阅读页使用 `bold = false`（细笔画 Regular）搭配 `RGB(17,17,17)` 或中灰 `RGB(85,85,85)`，PW2 实机文字明显发浅发灰。
+**Solution:** 正文、`metaText`、续页标题及底栏提示统一开启 `bold = true`（用 `Sarasa-Bold` 绘制，且测量函数同步传 `true`），正文使用纯黑 `color.Black`，次级文字与分隔线加深到 `RGB(40,40,40)` / `RGB(140..150)`。
+**Lesson:** 对非原生 300 PPI 且经双线性缩小的电子墨水屏界面，正文和次级文本优先用粗体字重与高对比黑度，不要按桌面显示器眼光使用常规细字重配中浅灰。
 
 **`xml.HTMLAutoClose` 会破坏标准 RSS 的 `<link>...</link>` 标签**
 Go 标准库 `xml.HTMLAutoClose` 将 `link` 视为 HTML 自闭合空标签，导致 RSS 2.0 中 `<link>https://...</link>` 在开标签后立刻合成关闭、`</link>` 报错 `unexpected end element </link>` 或从 `stack` 错弹出外层 `<item>` 导致日期/正文全丢。
