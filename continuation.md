@@ -1,24 +1,29 @@
 # Continuation: Kindle Dashboard
 
-**Date:** 2026-11-20（Asia/Shanghai）
-**Last update:** 2026-11-23（用户实机验收：无 DHCP 通过、整套看板运行正常）
-**Working directory:** `E:\开发项目\Kindle-dashboard`（Windows；本会话在 Windows 上完成）
-**Git HEAD:** `770c6ee docs: 记录夜间 Wi-Fi 自愈已实机验证`（已推送 `origin/main`；Wi-Fi 自愈提交为 `e7fb8ee`）
+**Date:** 2026-11-26（Asia/Shanghai）
+**Working directory:** `E:\开发项目\Kindle-dashboard`（Windows）
+**Archived previous handoff:** `continuation.archive.20261126_180157.md`
+**Latest Code Commit (before this doc):** `fa53d689a54a0cade3859670615a2fca9bc7a0f2`（`fa53d68 feat: 调整横屏三页顺序为热榜、月历、OpenCode用量`）
+
+---
 
 ## What This Project Is
 
-Go HTTP 服务为越狱 Kindle 生成灰度仪表盘，显示时间、天气、农历和月历。Kindle 通过 KUAL 客户端经局域网取图；横屏在线模式保持联网并局部刷新时钟/天气，减少整屏闪烁。项目同时支持 Paperwhite 3（1072×1448）和 Paperwhite 2（758×1024）。
+Go HTTP 服务为越狱 Kindle（支持 PW2 `758×1024` 与 PW3 `1072×1448`）动态生成 8 位灰度 PNG 电子墨水屏看板，逆时针横屏摆放。当前涵盖首页「时钟/两日天气 + 中文科技热榜」、完整月历页、OpenCode Go 用量页，以及首页轻点新闻全屏查看正文的多页阅读视图，并搭配 Kindle KUAL/ash 客户端脚本实现局部刷新、滑动翻页、Wi-Fi 自愈与防烧屏/前光管理。
 
 ## Tech Stack
 
-- Go 1.25，module `kindle-dashboard`；`github.com/fogleman/gg`、`golang.org/x/image/font/{sfnt,opentype}`、`github.com/6tail/lunar-go`。
-- Docker Compose；GitHub Actions 运行 Linux 全量测试、构建 linux/amd64 与 linux/arm64 镜像，发布到 `ghcr.io/cn-404-not-found/kindle-dashboard:latest` 及提交 SHA 标签。
-- Kindle：KUAL、POSIX shell（ash）、`eips`、LIPC、kterm；PW3 触摸 `/dev/input/event1`、电源键 `/dev/input/event0`，PW2 已确认同样的输入设备路径。
-- 字体：官方 `Sarasa-Regular.ttc`（默认）和可选 `Sarasa-Bold.ttc`，均不入库。
+- **Backend**: Go 1.25（module `kindle-dashboard`）；`github.com/fogleman/gg`、`golang.org/x/image/font/{opentype,sfnt}`（严禁使用已移除的 `font/truetype`）、`github.com/6tail/lunar-go/calendar`。
+- **Fonts**: 更纱黑体官方 `.ttc`（`Sarasa-Regular.ttc` 必选、`Sarasa-Bold.ttc` 可选），放于运行目录，已被 `.gitignore` 排除且不入库；无字库环境下渲染 PNG 的测试按约定 `t.Skip`。
+- **Deployment & CI**: Docker Compose + GitHub Actions（`.github/workflows/container.yml`），自动运行 Linux 全量 `go test ./...`、构建 `linux/amd64` 与 `linux/arm64` 多架构镜像发布至 `ghcr.io/cn-404-not-found/kindle-dashboard:latest` 及提交 SHA 标签，并启动容器抽检 `/screen.png`。
+- **Kindle Client**: KUAL、POSIX `sh`/BusyBox `ash`、`eips`、`curl`、LIPC、`evdev`（`/dev/input/event1` 触摸、`/dev/input/event0` 电源键）。当前主力实机为 **Kindle Paperwhite 2（PW2，`758×1024`）**。
 
 ## How to Build & Run
 
-Linux / CI：
+- 本机（Windows）未安装 Go 工具链（`where.exe go` 为空，`D:\Personal\Temp\kindle-preview-go\go\bin\go.exe` 不存在），因此完整编译与 `go test ./...` 统一在 GitHub Actions 执行。
+- 本机 Git 仓库归属另一个 Windows SID，所有 `git` 命令必须带 `-c safe.directory='E:/开发项目/Kindle-dashboard'`；所有 `gh` 命令带 `--repo cn-404-not-found/kindle-dashboard`。
+
+Linux / CI 标准构建与验证命令：
 
 ```sh
 go mod download
@@ -26,149 +31,135 @@ go test ./...
 go build -o kindle-dashboard .
 ./kindle-dashboard
 curl -f -o screen.png http://127.0.0.1:8080/screen.png
-curl -f -o landscape.png 'http://127.0.0.1:8080/screen.png?layout=landscape'
+curl -f -o home.png 'http://127.0.0.1:8080/screen.png?layout=landscape&page=home'
+curl -f -o calendar.png 'http://127.0.0.1:8080/screen.png?layout=landscape&page=calendar'
+curl -f -o opencode.png 'http://127.0.0.1:8080/screen.png?layout=landscape&page=opencode'
 ```
 
-本机（Windows）没有 `go` 在 PATH，使用临时工具链 `go1.25.9`：
+Git / CI 查看常用命令：
 
-```sh
-GO="/d/Personal/Temp/kindle-preview-go/go/bin/go.exe"
+```powershell
+git -c safe.directory='E:/开发项目/Kindle-dashboard' status --short
+gh run list --repo cn-404-not-found/kindle-dashboard --limit 5
+gh run watch <run-id> --repo cn-404-not-found/kindle-dashboard --exit-status
+gh run view <run-id> --repo cn-404-not-found/kindle-dashboard --log | Select-String -Pattern "Run tests|Smoke test published image"
 ```
-
-Windows 只能运行可移植测试；`landscape_partial_client_test.go`（`!windows`）、`dashboard_power_test.go` 等依赖 Linux syscall/FIFO，交给 GitHub Actions。当前可用的 Windows 子集：
-
-```sh
-src=$(ls *.go | grep -v '_test\.go$')
-"$GO" test -count=1 $src network_health_test.go landscape_test.go weather_test.go \
-  calendar_test.go local_calendar_test.go display_test.go
-```
-
-Git 目录归属另一 Windows SID，所有 git 命令加：
-
-```sh
-git -c safe.directory='E:/开发项目/Kindle-dashboard' ...
-```
-
-`gh` 需指定 `--repo cn-404-not-found/kindle-dashboard`。
 
 ## Key Files
 
-| 文件 | 用途 |
+| File | Purpose |
 | --- | --- |
-| `AGENTS.md` | 项目规范：只改需求相关文件、补测试、中文提交并推送；字体不入库。 |
-| `main.go` | HTTP 路由、数据组装、设备旋转与局刷协议、天气后台更新。 |
-| `landscape.go` / `landscape_partial.go` | 横屏渲染；按设备分辨率裁切时钟/天气图块。 |
-| `weather.go` | 中国天气网获取、缓存、每小时半点主动更新与失败重试。 |
-| `kindle-client/dashboard-extension/landscape-partial.sh` | PW2/PW3 横屏在线局刷客户端主循环。 |
-| `kindle-client/dashboard-extension/network-health.sh` | **本会话新增**：链路级 Wi-Fi 健康检查与分级恢复。 |
-| `kindle-client/dashboard-extension/power.sh` | 防屏保、前光控制、看板异常重启与退出恢复。 |
-| `kindle-client/dashboard-extension/menu-pw2.json` | PW2 菜单（只含横屏在线、停止、服务器地址）；PW2 设备上它被复制为 `menu.json`。 |
-| `kindle-client/dashboard-extension/menu.json` | PW3/完整菜单（含离线与在线模式），**不要装到 PW2**。 |
-| `kindle-client/network-settings/` | 静态 IPv4/DHCP 与 Ping 工具；无 DHCP 环境仍未验证。 |
-| `network_health_test.go` | **本会话新增**：Wi-Fi 恢复阶梯的 shell 单元测试。 |
-| `landscape_partial_client_test.go` | PW2/PW3 刷新顺序测试（`!windows`，Linux CI 执行）。 |
-| `.github/workflows/container.yml` | Linux 测试、双架构镜像发布、默认竖屏 PNG 冒烟。 |
+| `AGENTS.md` | 项目编码红线与行为准则（只改需求相关代码、补测试、中文祈使提交、禁止提交二进制/`.env`）。 |
+| `main.go` | HTTP 入口：`/screen.png`、`/api/tap`、`/api/news`、`/api/display`、`/api/opencode/usage`；包含 `fitToDevice`/`rotate90CW` 与 `news_detail` 快速分支。 |
+| `pages.go` | 横屏页面轮换顺序（`dashboardPageNames`: `home → calendar → opencode`）与按需页 `news_detail` 路由及局刷能力声明。 |
+| `landscape.go` | 横屏左栏（时钟、天气、无标题放大两日天气大字卡 `260×239`、农历/节气）与第 2 页完整月历渲染。 |
+| `landscape_partial.go` | 横屏局刷图块裁切与 PW2/PW3 坐标换算：`clock`、`weather`（已扩至 `136,55..701,599`）、`news`、`pageheader`。 |
+| `tech_news.go` | 5 源中文科技热榜（`solidot,sspai,ithome,geekpark,v2ex`）定时抓取（30 分钟）、广告过滤、`NewsItem` 正文提取与 50 条历史索引。 |
+| `news_page.go` | 首页右侧热榜绘制与 `wrapTwoLines`（ASCII 整词回退 + 中文避头点）。 |
+| `news_article.go` | 正文按需抓取（少数派 `wangEditor-txt` 等容器提取与 2h 缓存）、`rawTouchToLandscape`、热榜与阅读页命中判定及 `/api/tap`。 |
+| `news_article_page.go` | `1448×1072` 全屏正文阅读页（`← 返回看板`、第 1 页大标题+续页紧凑单行标题、`38px` 正文自动分页、翻页底栏、无二维码）。 |
+| `weather.go` / `opencode_usage.go` / `opencode_page.go` | 中国天气网采集缓存与 OpenCode Go 订阅用量页。 |
+| `kindle-client/dashboard-extension/landscape-partial.sh` | PW2/PW3 横屏主循环：每分钟时钟、整点天气（`136:55`/`96:38`）、热榜局刷、轻点 `tap` 调用、阅读页快翻与 3 分钟无操作回首页。 |
+| `kindle-client/dashboard-extension/touch-swipe.sh` | `/dev/input/event1` 滑动翻页与短点（`tap <x> <y>`，`KINDLE_TAP_THRESHOLD=60`）识别，带同轴坐标缓存与 `BTN_TOUCH` 去重。 |
+| `kindle-client/dashboard-extension/landscape-ui.sh` | 暂停/恢复系统窗口管理器 `awesome`，以及可被 `SIGUSR1` 安全终止清理的 `landscape_sleep`。 |
+| `kindle-client/dashboard-extension/network-health.sh` | Wi-Fi 链路检查与分级恢复。 |
+| `kindle-client/dashboard-extension/menu-pw2.json` | PW2 精简菜单；在 PW2 设备上作为 `menu.json` 使用（**切勿用 PW3 完整 `menu.json` 覆盖**）。 |
+| `tech_news_test.go` / `news_article_test.go` | 热榜、正文解析抓取、坐标映射、命中测试、分页、handler 单元测试。 |
+| `landscape_test.go` / `landscape_partial_client_test.go` / `pages_test.go` | 局刷坐标、PW2 适配、FIFO 触摸模拟、点击阅读与超时回首页 Shell 测试（`!windows` 在 CI 执行）。 |
+| `.github/workflows/container.yml` | CI 测试 + 多架构镜像构建发布 + 冒烟测试。 |
 
 ## What Was Just Done (Most Recent Session)
 
-1. 用户报告 Kindle **每天晚上自动断开 Wi-Fi**、之后一直连不回来；确认设备设置里没有 Power Saver 选项，要求在**代码层面**保证 Wi-Fi 持续连接。
-2. 定位原因：Kindle 空闲/休眠时会关闭射频；原客户端每分钟只重试 `curl`，**没有任何 Wi-Fi 自愈**，所以夜里掉线后永远不会恢复。原 `power.sh` 只设置了一次 `preventScreenSaver 1`。
-3. 新增 `kindle-client/dashboard-extension/network-health.sh`：
-   - `network_online`：`wirelessEnable=1` + `wpa_state=COMPLETED` + `wlan0` 有 IPv4 才算在线，健康时只读。
-   - `network_ensure_online`：电台被关 → 重新打开；掉线 → `wpa_cli -i wlan0 reassociate`；仍未恢复 → 无线开关 `0→1`；每级等待 20 秒，失败下轮重试。
-   - `network_keep_awake`：每轮重申 `preventScreenSaver 1`，避免 powerd 重置后休眠关射频。
-   - `KINDLE_WIFI_WATCHDOG=0` 可关闭整套行为。
-4. 修改 `landscape-partial.sh`：source `network-health.sh`，在每轮 `curl` 前调用 `network_keep_awake` + `network_ensure_online`。
-5. 测试与文档：新增 `network_health_test.go`（健康链路、reassociate 恢复、电台重启恢复 3 个用例）；`landscape_partial_client_test.go` 增加 health 模块 stub；更新根 `README.md` 和客户端 `README.md`。
-6. 提交 `e7fb8ee fix: 横屏在线模式自动恢复断开的 Wi-Fi` 并推送。推送前远端已有 `b110917 feat: 适配 PW2` 和 `6725bc2 docs: 更新并归档交接文档`，已 rebase；客户端 README 冲突合并为「保留 PW2 支持 + 新增 WiFi 自愈说明」。
-7. [GitHub Actions 44437722106](https://github.com/cn-404-not-found/kindle-dashboard/actions/runs/44437722106) **success**：Linux 全量测试、双架构镜像、PNG 冒烟均通过。
-8. 已把更新写入用户接上的 Kindle（Windows 盘符 `G:`）：从 `git show HEAD:…` 写入 `network-health.sh`、`landscape-partial.sh`、客户端 `README.md`，校验 CR=0、与 HEAD 字节一致；保留 `server-url.txt` = `http://192.168.1.250:26168`。设备原 `landscape-partial.sh` 与 `HEAD~1` 完全一致，说明只差本次改动。
-9. 设备身份判断：其 `menu.json` 与仓库 `menu-pw2.json` 内容一致（无离线/在线模式项），`menu-pw2.json` 也在，服务器地址与 2026-11-16 的 PW2 会话记录一致；因此本次更新的是 **PW2**，不是 PW3。未在会话中直接读取 `eips` 分辨率。
-10. 复制完成并 `sync` 后，设备在后续检查期间从 `G:` 卸载（可能被用户安全弹出或 USB 断开）。文件已在卸载前校验通过，但不能假设设备当前仍挂载。
-11. 回答用户：**服务器端不需要更新**——本次只改客户端脚本，服务端接口/局刷协议/渲染均未变。
-12. 2026-11-20 用户反馈：更新后**夜间已不再掉 Wi-Fi**。此前"待观察"的自愈修复通过实机过夜验证。
-13. 2026-11-23 用户反馈：**无 DHCP 环境测试通过**，设备不再掉线，整套看板运行正常；此前遗留的 PW2 实机验证项一并关闭。
+1. **左栏两日天气卡片放大去标题 + 热榜折行优化（`044656c`）**：
+   - 按预览确认方案，去掉 `landscape.go` 的 `"未来两日天气"` 小标题，将双卡放大为 `260×239`（`y=692..931`）、内部分隔线 + `"明天 · 周五"` / `"后天 · 周六"`，`46px` 天气与 `36px` 温度。
+   - 同步将 `part=weather` 局刷矩形下扩为 `136,55..701,599`（PW3 `weather_x=136`，PW2 `weather_x=96`）。
+   - 优化 `news_page.go` `wrapTwoLines`：修复 `runes[i] == ' '` 会越过中文误断句的问题，改为沿连续 ASCII/数字/`.`/`-` 词元回退，并增加中文句末/分隔标点避头点（`isClosingPunctRune`）。
+2. **新增「首页点击资讯全屏看正文」及 PW2 触控适配（`279513e` → `adda325` → `4cd2534` → `908906d`）**：
+   - 验证了 5 个默认资讯源的全文可得性：Solidot/IT之家/极客公园/V2EX 的 RSS/Atom 直接带完整正文（其中 `geekpark` ~4800–7100 字）；少数派 RSS 仅带 `查看全文` 导语，直抓 `sspai.com/post/...` 的 `wangEditor-txt` 容器可稳定拿到全文（实测 6746 字，HTTP 200）。
+   - 实现 `tech_news.go` 正文提取、`news_article.go` 按需抓取与 2 小时内存缓存、`/api/tap` 与 `rawTouchToLandscape`（适配 PW2 `758×1024` / PW3 `1072×1448`）、`news_article_page.go` 全屏阅读分页渲染（无二维码）。
+   - 顺带修掉了导致 `IT之家`/`少数派`/`Solidot` 在线上报错 `unexpected end element </link>` 的根因（Go `xml.HTMLAutoClose` 内含 `"link"`），修复后 CI 容器冒烟日志不再报任何源抓取错误。
+   - 升级 `touch-swipe.sh`、`landscape-partial.sh`、`landscape-ui.sh`：支持轻点识别、`noop` 点击仅亮背光不闪屏、页内翻页无全黑闪烁、左上返回按钮与 `KINDLE_ARTICLE_TIMEOUT=180` 秒（3 分钟）自动回首页，并修复 `SIGUSR1` 唤醒竞态与 `landscape_partial_client_test.go` FIFO/客户端端到端回归测试。
+3. **调整横屏三页滑动顺序（`fa53d68`）**：
+   - 将 `pages.go` 的 `dashboardPageNames` 改为 `[home, calendar, opencode]`，对应：第 1 页带资讯的时间面板 → 第 2 页带日历的面板 → 第 3 页 OpenCode 用量；同步更新 `pages_test.go` 与 `README.md`。
+4. **更新已连接的 Kindle PW2（`G:\extensions\kindle-dashboard`）**：
+   - 已核对 `G:` 为 PW2 设备（原 `menu.json` 277B 与 `menu-pw2.json` 一致，保留 `server-url.txt` 27B 未动）。
+   - 将纯 LF（`CR=0`）并做过 SHA256 一致性校验的 4 个文件写入覆盖到 `G:\extensions\kindle-dashboard\`：`landscape-partial.sh`（11761 B）、`touch-swipe.sh`（3765 B）、`landscape-ui.sh`（1543 B）、`README.md`（5631 B）。
 
 ## Current State
 
 **Working:**
-- Wi-Fi 自愈代码已提交、推送，CI 全绿。
-- **夜间掉线已验证修复**（2026-11-20 用户反馈过夜不再断网）：每分钟重申 `preventScreenSaver 1` 阻止休眠关射频；掉线时按「开电台 → reassociate → 电台重启」自愈。
-- **无 DHCP 静态 IP 环境已验证通过**（2026-11-23 用户反馈）。
-- **整机运行正常**（2026-11-23 用户反馈）：不再掉线，日常看板作业均正常。
-- PW2 设备上的 `network-health.sh` / `landscape-partial.sh` / `README.md` 已写入并校验（LF、匹配 HEAD）；`server-url.txt` 未动。
-- 健康链路下行为不变：检查只读，不写 Wi-Fi 设置；刷新坐标与 PW2/PW3 布局未改。
+- Commit `fa53d68` 已推送至 `origin/main`，[GitHub Actions Run 45794459998](https://github.com/cn-404-not-found/kindle-dashboard/actions/runs/45794459998)（`1m51s`）全绿：
+  - `go test ./...` 通过（`ok kindle-dashboard 14.306s`；含字体 PNG 渲染的用例在无 `.ttc` 字体环境按设计 `t.Skip`，其余单测、handler 与 Linux shell/FIFO 客户端测试全部实际跑通）。
+  - Docker 多架构镜像发布与冒烟验证通过，且 `IT之家`/`少数派`/`Solidot` 在 RSS `<link>` 修复后容器冒烟日志零报错。
+- PW2 客户端 `G:\extensions\kindle-dashboard\` 4 个更新文件已写盘并校验 `CR=0` 与 SHA256 一致；`server-url.txt` 与 PW2 `menu.json` 完整保留。
 
 **Broken / Known Issues:**
-- 自愈是链路级的；路由器夜间重启、上游故障不在客户端能力范围内。若整机被 powerd 强制挂起，进程无法运行，只能靠每分钟重申防屏保缓解。
-- 未核实具体由哪一级恢复生效：用户未提供 `/tmp/kindle-dashboard.log`，日志中是否出现 `Wi-Fi offline; attempting recovery.` 不明。最可能的主因是 `network_keep_awake`（防休眠关射频）。
-- 设备当前未挂载在本机。
-- PW2 真机每分钟局刷、整点天气、闪烁/残影、四次短按退出：2026-11-23 用户确认整体运行正常。
-- KUAL 曾偶发打不开（原因不明，近期未复现）；GHCR/TLS 超时问题不要假设已根除。
-- PW2 的 `menu.json` 是**有意**的最小菜单，不要用仓库的完整 `menu.json` 覆盖。
+- 少数派个别会员付费专栏文章在网页端只有试读段，无法读取付费全文（免费文章均可完整抓取）。
+- GitHub Actions 上的部分国内源若遇到特定海外 CDN/WAF 返回 HTML（而非 XML），会走 `返回了 HTML 页面而非 RSS/Atom` 容错并保留旧缓存；国内 NAS 网络实测 5 源均返回 HTTP 200。
 
-**In Progress:**
-- 无。夜间掉线、无 DHCP 环境、PW2 整机运行均已由用户实机确认正常（2026-11-23）；若以后再次掉线，再收集 `/tmp/kindle-dashboard.log` 断网前后日志，区分省电（`wirelessEnable=0`）与关联/路由器问题。
+**In Progress (Awaiting User / Device Verification):**
+- 新版服务尚未在用户 NAS Docker 上拉取重启；Kindle PW2 文件已更新在设备存储内，需用户安全弹出设备后重启 `Start landscape online` 进行真机手感验收。
 
 ## Pending Tasks
 
-1. 已完成：PW2 文件已更新，用户已在 KUAL 启动 `Start landscape online` 并过夜观察。
-2. 已完成：用户反馈夜间不再掉 Wi-Fi（2026-11-20），暂无需收集日志。若复发，再看 `/tmp/kindle-dashboard.log` 中是否有 `Wi-Fi offline; attempting recovery.` / `Reassociate failed; toggling the radio.`。
-3. 服务器端由用户自行更新；本次无需更新。除非用户明确要求，不代替部署。
-4. 已完成：无 DHCP 网络静态 IP 验证通过（2026-11-23）；PW2 实机整体运行正常，此前局刷/残影/退出验证项一并关闭。KUAL 偶发打不开保留为低优先级观察项。
-5. 不要同步 PW2 的 `menu.json` 为完整菜单。
+1. 用户在电脑安全弹出 Kindle（`G:`）并拔线。
+2. 服务端执行 `docker compose pull && docker compose up -d` 拉取最新镜像并重启容器。
+3. 在 PW2 的 KUAL 菜单停止旧看板进程后重新启动 `Start landscape online`，真机验证：
+   - 第 1 页「带资讯的时间面板」→ 第 2 页「带日历的面板」→ 第 3 页「OpenCode 用量」切换是否顺畅；
+   - 点击右侧任意新闻全屏看正文（命中准度、翻页、左上返回与 3 分钟自动回首页）；若发现轻点落点存在系统偏差，根据日志微调坐标或 `KINDLE_TOUCH_MAX_X`/`KINDLE_TOUCH_MAX_Y`。
+4. 后续如继续调整 UI 布局或样式，按用户偏好先用渲染预览（`html_render`）给用户看效果，确认满意后再开发提交 GitHub。
 
 ## Key Technical Decisions
 
-- **Wi-Fi 自愈放在客户端主循环**，不新增独立守护进程：每轮刷新前先做轻量检查，健康时无写操作；恢复按「开电台 → reassociate → 电台重启」逐级升级，避免每分钟无意义地切射频。
-- 每轮重申 `preventScreenSaver 1`：`power.sh` 只在启动/重启看板时设置一次，若被 powerd 重置，设备休眠会直接关射频。
-- 该组合已由用户过夜实机验证有效（2026-11-20）；`KINDLE_WIFI_WATCHDOG=0` 可整体关闭，排查时优先读日志判断触发到哪一级。
-- 使用 `com.lab126.cmd wirelessEnable` 作为电台开关、`wpa_cli -i wlan0 status` + `ifconfig wlan0` 判定连通；这些与离线模式 `offline-network.sh` 已验证的做法一致。
-- 本次**不改服务器**：协议和渲染未变；PW2 所需的动态 `png-width`/`png-height` 适配已在 `b110917` 完成。
-- PW2 使用 `menu-pw2.json` 作为设备 `menu.json`；PW3 使用完整 `menu.json`，两者不要混装。
-- 保留用户认可的横屏天气排版（最高/最低温单行居中），不要重排。
-- 部署客户端脚本时从 `git show HEAD:path` 取内容，而不是直接复制工作区文件（见 Gotchas 的 CRLF 问题）。
+- **`news_detail` 独立于三页轮换**：不放入 `dashboardPageNames`，确保日常左右滑动仍是 `home → calendar → opencode` 3 页；仅通过首页轻点进入，在阅读页左上点击或第 1 页右滑返回 `home`。
+- **不添加原文二维码**：按用户明确确认保持阅读页清爽，不占正文空间，正文 38px + 长文分页。
+- **PW2 坐标映射方案**：结合 KOReader `KindlePaperWhite2` 驱动与 `rotate90CW` 实现，PW2 `cyttsp4_mt` 直接按竖屏分辨率 `758×1024`（`rawTouchToLandscape` 支持环境变量 `KINDLE_TOUCH_MAX_X`/`Y` 覆盖）逆算回 `1448×1072` 横屏坐标。
+- **混合正文抓取与缓存隔离**：RSS 自带长文直接从 `techNews` 内存直出；截断条目点击时按需抓取并缓存 `2h`，抓取失败仅临时降级返回导语但不写 `2h` 缓存以便重试。`screenHandler` 对 `page=news_detail` 跳过 `fetchDashboardData()`，避免看新闻时误触发阻塞天气抓取。
+- **轻点左栏不刷新屏幕**：`tap` 若命中 `/api/tap` 返回 `noop` 且未到下分钟刷新时刻，客户端跳过全页/时钟刷新，只由 `touch-light.sh` 点亮背光。
+- **PW2 菜单保留策略**：`G:\extensions\kindle-dashboard\menu.json` 保持 `menu-pw2.json` 内容（277 B），绝不用仓库完整 `menu.json` 覆盖。
 
 ## Gotchas & Traps
 
-**工作区 CRLF 与提交 LF 不一致**
-Windows 工作区里许多 `kindle-client/dashboard-extension/*` 文件实际含 CRLF（例如 `stop.sh` 有 7 个 CR），尽管 `.gitattributes` 声明 `eol=lf`；但 `git show HEAD:path` 的提交内容全部是 LF（已逐个验证 CR=0）。直接把工作区文件复制到 Kindle 可能带入 CRLF，导致 ash 脚本异常。
-**Solution:** 部署时用 `git show HEAD:path > /g/...`，复制后执行 `tr -cd '\r' | wc -c` 确认 CR=0，再 `sync`。
-**Lesson:** `.gitattributes` 只约束 Git 检出/提交，不保证当前工作区字节。
+**`xml.HTMLAutoClose` 会破坏标准 RSS 的 `<link>...</link>` 标签**
+Go 标准库 `xml.HTMLAutoClose` 将 `link` 视为 HTML 自闭合空标签，导致 RSS 2.0 中 `<link>https://...</link>` 在开标签后立刻合成关闭、`</link>` 报错 `unexpected end element </link>` 或从 `stack` 错弹出外层 `<item>` 导致日期/正文全丢。
+**Solution:** 在 `parseNewsFeedItems` 中改用显式排版容错列表 `dec.AutoClose = []string{"br", "hr", "img"}`，并在 `EndElement` 时按标签名逆序查找栈位置后弹出（未匹配则忽略游离结束标签）。
+**Lesson:** 解析 RSS/Atom XML 绝不要直接套用 `xml.HTMLAutoClose`。
 
-**Git 目录所有权**
-本机仓库归属另一个 Windows SID，普通 `git` 报 `dubious ownership`。
-**Solution:** 每条命令加 `-c safe.directory='E:/开发项目/Kindle-dashboard'`；`gh` 加 `--repo`。
-**Lesson:** 不要改全局 Git 信任设置。
+**Go `regexp`（RE2）不支持反向引用 `\1`**
+`(?is)<(script|...)[^>]*>.*?</\1>` 可通过编译，但在包 `init()` 阶段直接 `panic: invalid escape sequence: \1`。
+**Solution:** 新增无反向引用的 `compileTagBlockPatterns(tags ...string)` 与 `stripRegexBlocks`（复用在 `tech_news.go` 与 `news_article.go`）。
+**Lesson:** 本机无 Go 工具链时，写法上严格避免 PCRE 特性（`\1`、前瞻/后瞻）并在推送前 grep `MustCompile`。
 
-**设备身份与菜单**
-本次挂载的 `G:` 是 **PW2**（`menu.json` 与 `menu-pw2.json` 一致、服务器地址与 PW2 会话一致）。若误把仓库完整 `menu.json` 写入，会暴露 PW3 专用的离线/在线模式。
-**Solution:** PW2 始终使用 `menu-pw2.json`；更新时不要覆盖 `menu.json`。
-**Lesson:** 先核对 `menu.json` 内容再判断设备，不要凭想象。
+**`strings.ToLower` 扫描 HTML 可能导致字节偏移错位**
+某些网页含特殊 Unicode 字符，直接用 `strings.ToLower(htmlStr)` 索引并切原串 `htmlStr[...]` 可能在边界产生偏移偏差。
+**Solution:** 在 `news_article.go` 中编写仅转换 ASCII `'A'..'Z'` 的 `asciiLower`，保证输入输出字节长度严格 1:1 相等。
+**Lesson:** 混用索引文本与原文切片时必须保证大小写转换保持字节等长。
 
-**Windows 无法跑全部测试**
-`landscape_partial_client_test.go` 是 `!windows`；`dashboard_power_test.go` 用 `syscall.Mkfifo`。本机只能跑可移植子集。
-**Solution:** 本机跑上面的 Windows 子集；用带 stub 的手工 shell 冒烟验证 PW2/PW3 坐标；全量交给 GitHub Actions。
-**Lesson:** 区分平台限制和真实回归。
+**Go 无类型浮点常量表达式不能直接转 `int(...)`**
+例如 `int((1071.0 - 95.0) * 758.0 / 1072.0)` 含非整数常量会直接编译失败。
+**Solution:** 表达式至少一侧用运行时浮点变量或 `float64(...)`（如 `lx, ly := 980.0, 95.0`）。
+**Lesson:** 像素换算常量写测试时先落到 `float64` 变量。
 
-**远端分叉**
-推送时远端已有 PW2 与文档提交，直接 push 被拒。
-**Solution:** `git fetch` → `git rebase origin/main` → 解决 `kindle-client/dashboard-extension/README.md` 冲突（保留 PW2 文本 + WiFi 自愈文本）→ `git push`。
-**Lesson:** 多会话/多机器并行时先 fetch 再推送。
+**`touch-swipe.sh` 的 `BTN_TOUCH=1` 后到与 evdev 同轴去重**
+Linux Type B 多点触控常先发 `ABS_MT_TRACKING_ID` 与 `X/Y` 再发 `BTN_TOUCH=1`，原 `begin()` 无条件清零起点会擦除首触坐标；连点同一水平位时内核也会省略未变的 `ABS_MT_POSITION_X`。
+**Solution:** `begin()` 增加 `[ "$touching" -eq 1 ] && return` 守卫，并用 `last_x`/`last_y` + `seen_x`/`seen_y` 延续上次坐标。
+**Lesson:** 同时兼容多事件顺序和同轴事件省略。
 
-**设备会在检查中途卸载**
-USB 模式下 `G:` 可能在无操作后断开/被弹出，`ls /g` 突然报不存在。
-**Solution:** 写完后立即校验并 `sync`；不要假设挂载一直存在；重新挂载后再检查。
-**Lesson:** 不要把“路径突然消失”误判为文件被删除。
+**`landscape-partial.sh` `SIGUSR1` 唤醒与主循环竞态**
+若 `SIGUSR1` 在 `eips`/`curl` 收尾阶段提前到来（尚未进入 `landscape_sleep`），trap 仅置 `page_requested=1` 仍会被后续无条件 `landscape_sleep` 睡满 30–60 秒；且不同 shell（Ubuntu CI `dash` / Kindle `ash`）对 `wait` 中断后残余 `sleep` 子进程行为有差异。
+**Solution:** 在 `USR1` trap 内直接 `[ -n "${landscape_sleep_pid:-}" ] && kill "$landscape_sleep_pid" 2>/dev/null`；`apply_page_request` 开头清零 `page_requested=0`；调用 `landscape_sleep` 前判断 `[ "${page_requested:-0}" -eq 0 ] && [ ! -f "$page_request" ]`；在 `landscape-ui.sh` 的 `landscape_sleep` 结束清理子进程。
+**Lesson:** 信号驱动的 shell 守卫必须在循环与睡眠入口双重防竞态，并用 FIFO/信号端到端测试验证。
 
-**自愈的边界**
-Wi-Fi watchdog 只恢复链路（电台、关联、IPv4），不修复路由器夜间重启、上游故障或服务端不可达。
-**Solution:** 先看日志与 `wirelessEnable`/`wpa_state`；再决定是否查路由器。
-**Lesson:** 客户端自愈不等于网络环境稳定。
+**Windows CRLF、Git SID 与无本地 Go 编译器**
+工作区默认检出可能带 CRLF，直接复制 `.sh` 到 Kindle 会导致 `ash` 异常；本机需 `-c safe.directory='E:/开发项目/Kindle-dashboard'` 与 `gh --repo`。
+**Solution:** 向 Kindle 写文件时过滤掉 CR 字节（`$_ -ne 13`）并校验 `CR=0` 与 SHA256；提交前同样校验仓内 `.sh` 为 LF，CI 负责 `go test ./...`。
+**Lesson:** 脚本文件永远以二进制字节验证无 `0x0D`。
 
 ## How to Deploy
 
-服务器（用户自行操作，本次不需要）：
+### 1. 服务端（Docker Compose）
+
+在服务端（NAS）项目目录运行：
 
 ```sh
 docker compose pull
@@ -176,19 +167,17 @@ docker compose up -d
 docker compose ps
 ```
 
-Kindle 客户端更新（本次已对 PW2 执行；重做时）：
+### 2. Kindle PW2 客户端（本次已更新并校验完毕，重装/重做参考）
 
-```sh
-G="git -c safe.directory=E:/开发项目/Kindle-dashboard"
-$G show HEAD:kindle-client/dashboard-extension/network-health.sh \
-  > /g/extensions/kindle-dashboard/network-health.sh
-$G show HEAD:kindle-client/dashboard-extension/landscape-partial.sh \
-  > /g/extensions/kindle-dashboard/landscape-partial.sh
-$G show HEAD:kindle-client/dashboard-extension/README.md \
-  > /g/extensions/kindle-dashboard/README.md
-sync
+保持 `G:\extensions\kindle-dashboard\server-url.txt`（`27 B`）与 PW2 专用 `menu.json`（等同 `menu-pw2.json`，`277 B`）不动，以纯 LF 写入以下 4 个文件并核对 `CR=0`：
+
+```powershell
+$repoDir = 'E:\开发项目\Kindle-dashboard\kindle-client\dashboard-extension'
+$kindleDir = 'G:\extensions\kindle-dashboard'
+foreach ($name in @('landscape-partial.sh', 'touch-swipe.sh', 'landscape-ui.sh', 'README.md')) {
+  $lf = [byte[]]([System.IO.File]::ReadAllBytes((Join-Path $repoDir $name)) | Where-Object { $_ -ne 13 })
+  [System.IO.File]::WriteAllBytes((Join-Path $kindleDir $name), $lf)
+}
 ```
 
-然后安全弹出 `G:`，在 KUAL 选择 `Kindle Dashboard` → `Start landscape online`。PW2 设备当前服务器地址为 `http://192.168.1.250:26168`，不要覆盖 `server-url.txt`。PW2 重装时用 `menu-pw2.json` 作为 `menu.json`；PW3 才用完整 `menu.json`。
-
-日志：`/tmp/kindle-dashboard.log`。正常恢复会打印 `Wi-Fi offline; attempting recovery.`、`Reassociate failed; toggling the radio.` 等。
+安全弹出 Kindle 后，在 KUAL 进入 `Kindle Dashboard` → 先执行 `Stop`（如原进程仍在跑）→ 再选择 `Start landscape online`。运行日志在 `/tmp/kindle-dashboard.log`。
