@@ -57,7 +57,7 @@ func TestLandscapePartialImagesUseFramebufferCoordinates(t *testing.T) {
 		rect image.Rectangle
 	}{
 		{"clock", image.Rect(852, 55, 1020, 599)},
-		{"weather", image.Rect(182, 55, 701, 599)},
+		{"weather", image.Rect(136, 55, 701, 599)},
 		{"news", image.Rect(36, 680, 1032, 1410)},
 		{"pageheader", image.Rect(948, 620, 1048, 1400)},
 	} {
@@ -72,7 +72,7 @@ func TestLandscapePartialImagesUseFramebufferCoordinates(t *testing.T) {
 		rect image.Rectangle
 	}{
 		{"clock", image.Rect(852, 55, 1020, 599)},
-		{"weather", image.Rect(182, 55, 701, 599)},
+		{"weather", image.Rect(136, 55, 701, 599)},
 		{"news", image.Rect(36, 680, 1032, 1410)},
 		{"pageheader", image.Rect(948, 620, 1048, 1400)},
 	} {
@@ -112,7 +112,7 @@ func TestLandscapePartialPW2(t *testing.T) {
 		rect image.Rectangle
 	}{
 		{"clock", image.Rect(602, 38, 722, 424)},
-		{"weather", image.Rect(128, 38, 496, 424)},
+		{"weather", image.Rect(96, 38, 496, 424)},
 		{"news", image.Rect(25, 480, 730, 998)},
 		{"pageheader", image.Rect(670, 438, 742, 991)},
 	} {
@@ -140,8 +140,8 @@ func TestLandscapeForecastDayLabel(t *testing.T) {
 		weekday string
 		want    string
 	}{
-		{0, "周五", "明天 周五"},
-		{1, "周六", "后天 周六"},
+		{0, "周五", "明天 · 周五"},
+		{1, "周六", "后天 · 周六"},
 		{2, "周日", "周日"},
 	}
 	for _, tc := range tests {

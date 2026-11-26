@@ -192,6 +192,18 @@ func TestWrapTwoLines(t *testing.T) {
 	if l1 != "一二三四五六七八" || !strings.HasSuffix(l2, "…") || measure(l2) > 80 {
 		t.Fatalf("ellipsis wrap got (%q, %q)", l1, l2)
 	}
+
+	// 英文词紧密拼接在中文后时，只沿连续 ASCII 词元回退，不跨越中文误断；
+	l1, l2 = wrapTwoLines(measure, "大家觉得Plus订阅真的有必要吗", 60, 200)
+	if l1 != "大家觉得" || l2 != "Plus订阅真的有必要吗" {
+		t.Fatalf("cjk+ascii word wrap got (%q, %q)", l1, l2)
+	}
+
+	// 避头点：避免第二行以句末/分隔标点开头。
+	l1, l2 = wrapTwoLines(measure, "一二三四，五六七八", 40, 100)
+	if l1 != "一二三" || l2 != "四，五六七八" {
+		t.Fatalf("closing punct wrap got (%q, %q)", l1, l2)
+	}
 }
 
 func TestRenderLandscapeNewsDashboard(t *testing.T) {

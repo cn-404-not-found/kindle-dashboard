@@ -35,8 +35,8 @@ fi
 width=$(eips -i 2>/dev/null | sed -n 's/.*xres:[ ]*\([0-9]*\).*/\1/p' | head -1)
 height=$(eips -i 2>/dev/null | sed -n 's/.*yres:[ ]*\([0-9]*\).*/\1/p' | head -1)
 case "$width:$height" in
-  1072:1448) clock_x=852; clock_y=55; weather_x=182; weather_y=55; news_x=36; news_y=680; pageheader_x=948; pageheader_y=620 ;;
-  758:1024) clock_x=602; clock_y=38; weather_x=128; weather_y=38; news_x=25; news_y=480; pageheader_x=670; pageheader_y=438 ;;
+  1072:1448) clock_x=852; clock_y=55; weather_x=136; weather_y=55; news_x=36; news_y=680; pageheader_x=948; pageheader_y=620 ;;
+  758:1024) clock_x=602; clock_y=38; weather_x=96; weather_y=38; news_x=25; news_y=480; pageheader_x=670; pageheader_y=438 ;;
   *) echo "Unsupported framebuffer: $width x $height" >&2; exit 1 ;;
 esac
 

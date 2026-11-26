@@ -83,7 +83,7 @@ func renderLandscapeDashboard(data DashboardData) (result []byte, err error) {
 	return out.Bytes(), nil
 }
 
-// drawLandscapeLeftColumn 绘制横屏看板左栏（时间、天气、未来两日天气、农历/节气）及中缝竖线，
+// drawLandscapeLeftColumn 绘制横屏看板左栏（时间、天气、两日天气大字卡片、农历/节气）及中缝竖线，
 // 供热榜首页与完整月历页共享同一套左栏坐标，确保时钟/天气局部刷新区完全对齐。
 func drawLandscapeLeftColumn(dc *gg.Context, r *renderer, data DashboardData) {
 	black, gray, border := color.Black, color.RGBA{70, 70, 70, 255}, color.RGBA{160, 160, 160, 255}
@@ -109,13 +109,14 @@ func drawLandscapeLeftColumn(dc *gg.Context, r *renderer, data DashboardData) {
 	}
 	r.fitText(center, 631, weatherUpdateLabel(data), 28, 540, gray, false, .5)
 	line(55, 664, 599, 664, 3, black)
-	r.text(center, 708, "未来两日天气", 28, black, true, .5)
 	const boxW = 262.0
+	cardBorder := color.RGBA{140, 140, 140, 255}
+	innerDivider := color.RGBA{212, 212, 212, 255}
 	for i := 0; i < 2; i++ {
 		x := 55 + float64(i)*(boxW+20)
-		dc.SetColor(border)
-		dc.SetLineWidth(1)
-		dc.DrawRectangle(x, 726, boxW, 163)
+		dc.SetColor(cardBorder)
+		dc.SetLineWidth(1.5)
+		dc.DrawRectangle(x+1, 692, boxW-2, 239)
 		dc.Stroke()
 		day := weekdayNames[int(date.AddDate(0, 0, i+1).Weekday())]
 		weather, temperature := "--", "-- / --"
@@ -126,9 +127,10 @@ func drawLandscapeLeftColumn(dc *gg.Context, r *renderer, data DashboardData) {
 			temperature = fmt.Sprintf("%d° / %d°", f.HighTemp, f.LowTemp)
 		}
 		dayLabel := landscapeForecastDayLabel(i, day)
-		r.fitText(x+boxW/2, 766, dayLabel, 28, boxW-18, black, true, .5)
-		r.fitText(x+boxW/2, 819, weather, 38, boxW-18, black, true, .5)
-		r.fitText(x+boxW/2, 866, temperature, 32, boxW-18, black, false, .5)
+		r.fitText(x+boxW/2, 744, dayLabel, 30, boxW-22, gray, true, .5)
+		line(x+28, 764, x+boxW-28, 764, 1, innerDivider)
+		r.fitText(x+boxW/2, 834, weather, 46, boxW-22, black, true, .5)
+		r.fitText(x+boxW/2, 898, temperature, 36, boxW-22, black, false, .5)
 	}
 	line(55, 959, 599, 959, 1, border)
 	lunar := calendar.NewSolarFromYmd(date.Year(), int(date.Month()), date.Day()).GetLunar()
@@ -142,9 +144,9 @@ func drawLandscapeLeftColumn(dc *gg.Context, r *renderer, data DashboardData) {
 func landscapeForecastDayLabel(index int, weekday string) string {
 	switch index {
 	case 0:
-		return "明天 " + weekday
+		return "明天 · " + weekday
 	case 1:
-		return "后天 " + weekday
+		return "后天 · " + weekday
 	default:
 		return weekday
 	}

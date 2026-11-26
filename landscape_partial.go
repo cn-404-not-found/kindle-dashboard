@@ -22,7 +22,7 @@ func landscapePartialPNG(src []byte, part string) ([]byte, image.Rectangle, erro
 	case "clock":
 		area = image.Rect(852, 55, 1020, 599)
 	case "weather":
-		area = image.Rect(182, 55, 701, 599)
+		area = image.Rect(136, 55, 701, 599)
 	case "news":
 		// 横屏右侧热榜 (680,40)-(1410,1036) 顺时针旋转 90° 后的竖屏坐标。
 		area = image.Rect(36, 680, 1032, 1410)

@@ -15,8 +15,8 @@ import (
 
 func TestLandscapePartialClientSchedule(t *testing.T) {
 	for _, tc := range []struct{ size, clock, weather string }{
-		{"1072:1448", "852:55", "182:55"},
-		{"758:1024", "602:38", "128:38"},
+		{"1072:1448", "852:55", "136:55"},
+		{"758:1024", "602:38", "96:38"},
 	} {
 		t.Run(tc.size, func(t *testing.T) { testLandscapePartialClientSchedule(t, tc.size, tc.clock, tc.weather) })
 	}

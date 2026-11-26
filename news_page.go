@@ -12,7 +12,6 @@ import (
 	"math"
 	"os"
 	"strings"
-	"unicode"
 
 	"github.com/fogleman/gg"
 	"golang.org/x/image/font"
@@ -153,18 +152,19 @@ func wrapTwoLines(measure func(string) float64, text string, firstMaxW, secondMa
 		return string(runes), ""
 	}
 	cut := fitRunePrefix(measure, runes, firstMaxW)
-	// 若切在连续英文/数字单词中间，尽量回退到最近空格，避免单词断在半截。
-	if cut < len(runes) && isWordRune(runes[cut-1]) && isWordRune(runes[cut]) {
-		minCut := cut / 2
-		if cut-8 > minCut {
-			minCut = cut - 8
+	// 若切在连续英文/数字单词中间，仅沿连续词元向前回退，不跨越中文文本查找空格。
+	if cut > 0 && cut < len(runes) && isWordRune(runes[cut-1]) && isWordRune(runes[cut]) {
+		start := cut - 1
+		for start > 0 && isWordRune(runes[start-1]) {
+			start--
 		}
-		for i := cut - 1; i >= minCut; i-- {
-			if runes[i] == ' ' {
-				cut = i
-				break
-			}
+		if start > 0 && cut-start <= 10 && start >= cut/2 {
+			cut = start
 		}
+	}
+	// 避头点：避免第二行以句末/分隔标点符号开头。
+	for cut > 2 && cut < len(runes) && isClosingPunctRune(runes[cut]) {
+		cut--
 	}
 	line1 := strings.TrimSpace(string(runes[:cut]))
 	rest := []rune(strings.TrimSpace(string(runes[cut:])))
@@ -201,5 +201,9 @@ func fitRunePrefix(measure func(string) float64, runes []rune, maxW float64) int
 }
 
 func isWordRune(r rune) bool {
-	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || (r < unicode.MaxASCII && r == '-')
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '.'
+}
+
+func isClosingPunctRune(r rune) bool {
+	return strings.ContainsRune("，。、：；？！）》」】”’,.!?:;)]}", r)
 }
