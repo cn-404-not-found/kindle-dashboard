@@ -2,8 +2,8 @@
 //
 // 画布与横屏看板同为 1448×1072，通过统一缩放链路适配 PW2（758×1024）与 PW3（1072×1448）：
 //   - 顶栏保留「← 返回看板」按钮、来源标签、日期模式与当前页码；
-//   - 首页展示完整标题（最多 3 行），续页改为单行灰标题提示以释放更多正文空间；
-//   - 正文 38px 常规体按 1288px 宽自动断行与多页分页，底栏提供翻页区域与 3 分钟返回提示；
+//   - 首页展示完整标题（最多 3 行），续页改为单行深灰标题提示以释放更多正文空间；
+//   - 正文 36px 粗体纯黑按 1288px 宽自动断行与多页分页，底栏提供翻页区域与 3 分钟返回提示；
 //   - 全部使用黑白灰纯色渲染，不附带二维码。
 package main
 
@@ -30,11 +30,11 @@ const (
 	articleContentW       = articleContentRight - articleContentLeft
 	articleTopDividerY    = 106.0
 	articleBottomDividerY = 978.0
-	articleTitleSize      = 44.0
-	articleTitleLineH     = 58.0
-	articleFirstTitleY    = 182.0
-	articleBodySize       = 38.0
-	articleBodyLineH      = 63.0
+	articleTitleSize      = 48.0
+	articleTitleLineH     = 62.0
+	articleFirstTitleY    = 186.0
+	articleBodySize       = 36.0
+	articleBodyLineH      = 60.0
 	articleParaGap        = 24.0
 	articleBodyMaxY       = 948.0
 	articleNextBodyStartY = 232.0
@@ -72,7 +72,7 @@ func renderNewsArticlePage(item NewsItem, body string, isFull bool, requestedPag
 		return r.measure(s, articleTitleSize, true)
 	}
 	bodyMeasure := func(s string) float64 {
-		return r.measure(s, articleBodySize, false)
+		return r.measure(s, articleBodySize, true)
 	}
 
 	titleLines := wrapTitleLines(titleMeasure, item.Title, articleContentW, 3)
@@ -99,15 +99,13 @@ func renderNewsArticlePage(item NewsItem, body string, isFull bool, requestedPag
 	}
 
 	black := color.Color(color.Black)
-	bodyInk := color.RGBA{17, 17, 17, 255}
 	white := color.Color(color.White)
-	metaGray := color.RGBA{85, 85, 85, 255}
-	dividerGray := color.RGBA{207, 207, 207, 255}
-	bottomRuleGray := color.RGBA{184, 184, 184, 255}
-	hintGray := color.RGBA{102, 102, 102, 255}
+	metaGray := color.RGBA{40, 40, 40, 255}
+	dividerGray := color.RGBA{150, 150, 150, 255}
+	bottomRuleGray := color.RGBA{140, 140, 140, 255}
+	hintGray := color.RGBA{45, 45, 45, 255}
 	disabledBorder := color.RGBA{204, 204, 204, 255}
 	disabledText := color.RGBA{170, 170, 170, 255}
-	btnBorder := color.RGBA{34, 34, 34, 255}
 
 	// 顶栏：返回按钮 + 来源标签 + 日期状态 + 右侧页码
 	dc.SetColor(black)
@@ -141,7 +139,7 @@ func renderNewsArticlePage(item NewsItem, body string, isFull bool, requestedPag
 	if item.PublishedAt != "" {
 		metaText = item.PublishedAt + " · " + modeLabel
 	}
-	r.fitText(badgeX+badgeW+22, 71, metaText, 26, 620-badgeW, metaGray, false, 0)
+	r.fitText(badgeX+badgeW+22, 71, metaText, 26, 620-badgeW, metaGray, true, 0)
 	r.text(articleBarRight, 72, fmt.Sprintf("第 %d / %d 页", pageNum, totalPages), 28, black, true, 1)
 
 	dc.SetColor(black)
@@ -162,9 +160,9 @@ func renderNewsArticlePage(item NewsItem, body string, isFull bool, requestedPag
 		y = firstBodyStartY
 	} else {
 		shortTitle := truncateLineWithEllipsis(func(s string) float64 {
-			return r.measure(s, 24, false)
+			return r.measure(s, 26, true)
 		}, item.Title, articleContentW)
-		r.text(articleContentLeft, 152, shortTitle, 24, metaGray, false, 0)
+		r.text(articleContentLeft, 152, shortTitle, 26, metaGray, true, 0)
 		dc.SetColor(dividerGray)
 		dc.SetLineWidth(1)
 		dc.DrawLine(articleContentLeft, 172, articleContentRight, 172)
@@ -181,7 +179,7 @@ func renderNewsArticlePage(item NewsItem, body string, isFull bool, requestedPag
 				y += articleParaGap
 			}
 		}
-		r.text(articleContentLeft, y, line.Text, articleBodySize, bodyInk, false, 0)
+		r.text(articleContentLeft, y, line.Text, articleBodySize, black, true, 0)
 	}
 
 	// 底栏：上一页 / 操作提示 / 下一页
@@ -190,24 +188,24 @@ func renderNewsArticlePage(item NewsItem, body string, isFull bool, requestedPag
 	dc.DrawLine(articleBarLeft, articleBottomDividerY, articleBarRight, articleBottomDividerY)
 	dc.Stroke()
 
-	prevStroke, prevText := color.Color(btnBorder), color.Color(black)
+	prevStroke, prevText, prevLineW := black, black, 2.0
 	if pageNum <= 1 {
-		prevStroke, prevText = disabledBorder, disabledText
+		prevStroke, prevText, prevLineW = disabledBorder, disabledText, 1.5
 	}
 	dc.SetColor(prevStroke)
-	dc.SetLineWidth(1.5)
+	dc.SetLineWidth(prevLineW)
 	dc.DrawRoundedRectangle(articleBarLeft, 994, 172, 52, 6)
 	dc.Stroke()
 	r.text(articleBarLeft+86, 1029, "‹ 上一页", 28, prevText, true, 0.5)
 
-	r.fitText((articleBarLeft+articleBarRight)/2, 1029, "轻点底栏或左右滑翻页 · 3 分钟无操作自动返回看板", 24, 920, hintGray, false, 0.5)
+	r.fitText((articleBarLeft+articleBarRight)/2, 1029, "轻点底栏或左右滑翻页 · 3 分钟无操作自动返回看板", 24, 920, hintGray, true, 0.5)
 
-	nextStroke, nextText := color.Color(btnBorder), color.Color(black)
+	nextStroke, nextText, nextLineW := black, black, 2.0
 	if pageNum >= totalPages {
-		nextStroke, nextText = disabledBorder, disabledText
+		nextStroke, nextText, nextLineW = disabledBorder, disabledText, 1.5
 	}
 	dc.SetColor(nextStroke)
-	dc.SetLineWidth(1.5)
+	dc.SetLineWidth(nextLineW)
 	dc.DrawRoundedRectangle(articleBarRight-172, 994, 172, 52, 6)
 	dc.Stroke()
 	r.text(articleBarRight-86, 1029, "下一页 ›", 28, nextText, true, 0.5)
