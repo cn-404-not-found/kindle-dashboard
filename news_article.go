@@ -156,14 +156,14 @@ func fetchWebArticleBody(ctx context.Context, rawURL string) (string, error) {
 }
 
 var (
-	reArticleNonContentBlock = regexp.MustCompile(`(?is)<(script|style|noscript|svg|nav|header|footer|aside)[^>]*>.*?</\1>`)
-	reArticleParagraphBlock  = regexp.MustCompile(`(?is)<p(?:\s[^>]*)?>(.*?)</p>`)
+	reArticleNonContentBlocks = compileTagBlockPatterns("script", "style", "noscript", "svg", "nav", "header", "footer", "aside")
+	reArticleParagraphBlock   = regexp.MustCompile(`(?is)<p(?:\s[^>]*)?>(.*?)</p>`)
 )
 
 // extractWebArticleText 按常见中文科技站正文容器优先级提取纯文本段落。
 func extractWebArticleText(rawHTML []byte) string {
 	s := reNewsHTMLComment.ReplaceAllString(string(rawHTML), " ")
-	s = reNewsScriptTag.ReplaceAllString(s, " ")
+	s = stripRegexBlocks(s, reNewsScriptTags)
 
 	attrContainers := []string{
 		"wangEditor-txt",
@@ -177,7 +177,7 @@ func extractWebArticleText(rawHTML []byte) string {
 	}
 	for _, attr := range attrContainers {
 		if frag := extractElementByAttr(s, attr); frag != "" {
-			cleanedFrag := reArticleNonContentBlock.ReplaceAllString(frag, " ")
+			cleanedFrag := stripRegexBlocks(frag, reArticleNonContentBlocks)
 			if txt, _ := extractPlainParagraphs(cleanedFrag); len([]rune(txt)) >= 60 {
 				return txt
 			}
@@ -185,14 +185,14 @@ func extractWebArticleText(rawHTML []byte) string {
 	}
 	for _, tag := range []string{"article", "main"} {
 		if frag := extractTagBlock(s, tag); frag != "" {
-			cleanedFrag := reArticleNonContentBlock.ReplaceAllString(frag, " ")
+			cleanedFrag := stripRegexBlocks(frag, reArticleNonContentBlocks)
 			if txt, _ := extractPlainParagraphs(cleanedFrag); len([]rune(txt)) >= 60 {
 				return txt
 			}
 		}
 	}
 
-	stripped := reArticleNonContentBlock.ReplaceAllString(s, " ")
+	stripped := stripRegexBlocks(s, reArticleNonContentBlocks)
 	matches := reArticleParagraphBlock.FindAllStringSubmatch(stripped, -1)
 	var paras []string
 	for _, m := range matches {
@@ -207,10 +207,26 @@ func extractWebArticleText(rawHTML []byte) string {
 	return strings.Join(paras, "\n\n")
 }
 
+// asciiLower 只将 ASCII 大写字母转为小写，保证输出与原字符串字节偏移 1:1 对齐。
+func asciiLower(s string) string {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 'A' && s[i] <= 'Z' {
+			b := []byte(s)
+			for j := i; j < len(b); j++ {
+				if b[j] >= 'A' && b[j] <= 'Z' {
+					b[j] += 'a' - 'A'
+				}
+			}
+			return string(b)
+		}
+	}
+	return s
+}
+
 // extractElementByAttr 查找包含指定属性子串的 HTML 开始标签，并通过标签深度计数提取完整内容。
 func extractElementByAttr(htmlStr, attrNeedle string) string {
-	lower := strings.ToLower(htmlStr)
-	target := strings.ToLower(attrNeedle)
+	lower := asciiLower(htmlStr)
+	target := asciiLower(attrNeedle)
 	searchFrom := 0
 	for searchFrom < len(lower) {
 		rel := strings.Index(lower[searchFrom:], target)
@@ -246,8 +262,8 @@ func extractElementByAttr(htmlStr, attrNeedle string) string {
 }
 
 func extractTagBlock(htmlStr, tagName string) string {
-	lower := strings.ToLower(htmlStr)
-	tagLower := strings.ToLower(tagName)
+	lower := asciiLower(htmlStr)
+	tagLower := asciiLower(tagName)
 	openPrefix := "<" + tagLower
 	searchFrom := 0
 	for searchFrom < len(lower) {

@@ -809,11 +809,27 @@ func isAdNewsTitle(title string) bool {
 	return false
 }
 
+func compileTagBlockPatterns(tags ...string) []*regexp.Regexp {
+	patterns := make([]*regexp.Regexp, 0, len(tags))
+	for _, tag := range tags {
+		quoted := regexp.QuoteMeta(tag)
+		patterns = append(patterns, regexp.MustCompile(`(?is)<`+quoted+`(?:\s[^>]*)?>.*?</`+quoted+`(?:\s[^>]*)?>`))
+	}
+	return patterns
+}
+
+func stripRegexBlocks(s string, patterns []*regexp.Regexp) string {
+	for _, pat := range patterns {
+		s = pat.ReplaceAllString(s, " ")
+	}
+	return s
+}
+
 var (
-	reNewsScriptTag  = regexp.MustCompile(`(?is)<(script|style|noscript)[^>]*>.*?</\1>`)
+	reNewsScriptTags  = compileTagBlockPatterns("script", "style", "noscript")
 	reNewsHTMLComment = regexp.MustCompile(`(?s)<!--.*?-->`)
-	reNewsBlockTag   = regexp.MustCompile(`(?i)<br\s*/?>|</(?:p|div|li|h[1-6]|blockquote|tr|section|article|pre)>`)
-	reNewsAnyTag     = regexp.MustCompile(`(?s)<[^>]+>`)
+	reNewsBlockTag    = regexp.MustCompile(`(?i)<br\s*/?>|</(?:p|div|li|h[1-6]|blockquote|tr|section|article|pre)>`)
+	reNewsAnyTag      = regexp.MustCompile(`(?s)<[^>]+>`)
 )
 
 // extractPlainParagraphs 将 HTML 片段清洗为保留段落换行的纯文本，并识别常见摘要截断提示。
@@ -822,7 +838,7 @@ func extractPlainParagraphs(raw string) (string, bool) {
 		return "", false
 	}
 	s := reNewsHTMLComment.ReplaceAllString(raw, " ")
-	s = reNewsScriptTag.ReplaceAllString(s, " ")
+	s = stripRegexBlocks(s, reNewsScriptTags)
 	s = reNewsBlockTag.ReplaceAllString(s, "\n")
 	s = reNewsAnyTag.ReplaceAllString(s, "")
 	s = html.UnescapeString(s)
