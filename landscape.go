@@ -83,7 +83,7 @@ func renderLandscapeDashboard(data DashboardData) (result []byte, err error) {
 	return out.Bytes(), nil
 }
 
-// drawLandscapeLeftColumn 绘制横屏看板左栏（时间、天气、未来五日、农历/节气）及中缝竖线，
+// drawLandscapeLeftColumn 绘制横屏看板左栏（时间、天气、未来两日天气、农历/节气）及中缝竖线，
 // 供热榜首页与完整月历页共享同一套左栏坐标，确保时钟/天气局部刷新区完全对齐。
 func drawLandscapeLeftColumn(dc *gg.Context, r *renderer, data DashboardData) {
 	black, gray, border := color.Black, color.RGBA{70, 70, 70, 255}, color.RGBA{160, 160, 160, 255}
@@ -109,25 +109,26 @@ func drawLandscapeLeftColumn(dc *gg.Context, r *renderer, data DashboardData) {
 	}
 	r.fitText(center, 631, weatherUpdateLabel(data), 28, 540, gray, false, .5)
 	line(55, 664, 599, 664, 3, black)
-	r.text(center, 719, "未来五日", 25, black, true, .5)
-	const boxW = 103.2
-	for i := 0; i < 5; i++ {
-		x := 55 + float64(i)*(boxW+7)
+	r.text(center, 708, "未来两日天气", 28, black, true, .5)
+	const boxW = 262.0
+	for i := 0; i < 2; i++ {
+		x := 55 + float64(i)*(boxW+20)
 		dc.SetColor(border)
 		dc.SetLineWidth(1)
-		dc.DrawRectangle(x, 742, boxW, 147)
+		dc.DrawRectangle(x, 726, boxW, 163)
 		dc.Stroke()
 		day := weekdayNames[int(date.AddDate(0, 0, i+1).Weekday())]
-		weather, temperature := "--", "--/--"
+		weather, temperature := "--", "-- / --"
 		if i < len(data.FutureForecast) {
 			f := data.FutureForecast[i]
 			day = f.Weekday
 			weather = f.WeatherText
-			temperature = fmt.Sprintf("%d°/%d°", f.HighTemp, f.LowTemp)
+			temperature = fmt.Sprintf("%d° / %d°", f.HighTemp, f.LowTemp)
 		}
-		r.fitText(x+boxW/2, 781, day, 26, boxW-4, black, true, .5)
-		r.fitText(x+boxW/2, 824, weather, 25, boxW-4, black, true, .5)
-		r.fitText(x+boxW/2, 866, temperature, 23, boxW-4, black, true, .5)
+		dayLabel := landscapeForecastDayLabel(i, day)
+		r.fitText(x+boxW/2, 766, dayLabel, 28, boxW-18, black, true, .5)
+		r.fitText(x+boxW/2, 819, weather, 38, boxW-18, black, true, .5)
+		r.fitText(x+boxW/2, 866, temperature, 32, boxW-18, black, false, .5)
 	}
 	line(55, 959, 599, 959, 1, border)
 	lunar := calendar.NewSolarFromYmd(date.Year(), int(date.Month()), date.Day()).GetLunar()
@@ -135,4 +136,16 @@ func drawLandscapeLeftColumn(dc *gg.Context, r *renderer, data DashboardData) {
 	term, termDate, _ := nextSolarTerm(date)
 	r.fitText(599, 1012, fmt.Sprintf("%s %d月%d日", term, termDate.Month(), termDate.Day()), 32, 280, black, true, 1)
 	line(646, 52, 646, 1020, 2, black)
+}
+
+// landscapeForecastDayLabel 为横屏两日预报卡片生成带「明天/后天」前缀的标题。
+func landscapeForecastDayLabel(index int, weekday string) string {
+	switch index {
+	case 0:
+		return "明天 " + weekday
+	case 1:
+		return "后天 " + weekday
+	default:
+		return weekday
+	}
 }

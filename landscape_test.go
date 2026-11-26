@@ -133,3 +133,20 @@ func TestLandscapePartialPW2(t *testing.T) {
 		}
 	}
 }
+
+func TestLandscapeForecastDayLabel(t *testing.T) {
+	tests := []struct {
+		index   int
+		weekday string
+		want    string
+	}{
+		{0, "周五", "明天 周五"},
+		{1, "周六", "后天 周六"},
+		{2, "周日", "周日"},
+	}
+	for _, tc := range tests {
+		if got := landscapeForecastDayLabel(tc.index, tc.weekday); got != tc.want {
+			t.Fatalf("index=%d weekday=%q: got %q, want %q", tc.index, tc.weekday, got, tc.want)
+		}
+	}
+}
