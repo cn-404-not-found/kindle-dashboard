@@ -14,7 +14,7 @@ const (
 )
 
 // dashboardPageNames 是横屏客户端的页面顺序。
-var dashboardPageNames = []string{dashboardPageHome, dashboardPageOpencode, dashboardPageCalendar}
+var dashboardPageNames = []string{dashboardPageHome, dashboardPageCalendar, dashboardPageOpencode}
 
 // dashboardPage 描述一次请求对应的页面位置与相邻页。
 type dashboardPage struct {

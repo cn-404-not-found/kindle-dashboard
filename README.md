@@ -68,7 +68,7 @@ docker compose up -d
 
 用浏览器打开 `http://服务器IP:8080/screen.png` 查看。如果修改了 `HOST_PORT`，请使用对应端口；服务器防火墙需允许 Kindle 访问该端口，服务端也需要能够访问中国天气网。
 
-配置 `OPENCODE_GO_API_KEY` 后，可访问 `http://服务器IP:8080/screen.png?page=opencode&layout=landscape` 预览 OpenCode Go 用量页；`GET /api/opencode/usage` 返回脱敏后的用量快照，便于排查。横屏首页默认左栏展示时钟/天气、右栏展示科技热榜精选，可左右滑动切换 `热榜首页 → OpenCode 用量 → 完整月历`；热榜变化时同步更新新版 Kindle 客户端可自动局部刷新右侧，无需整屏闪烁；`GET /api/news` 返回当前热榜缓存快照。用量页页头常显当前时间与日期，每分钟只刷新页头，只有百分比、重置时间或状态变化时才重绘正文，每 5 分钟清屏整刷一次以控制墨水屏残影。
+配置 `OPENCODE_GO_API_KEY` 后，可访问 `http://服务器IP:8080/screen.png?page=opencode&layout=landscape` 预览 OpenCode Go 用量页；`GET /api/opencode/usage` 返回脱敏后的用量快照，便于排查。横屏首页默认左栏展示时钟/天气、右栏展示科技热榜精选，可左右滑动切换 `热榜首页 → 完整月历 → OpenCode 用量`；热榜变化时同步更新新版 Kindle 客户端可自动局部刷新右侧，无需整屏闪烁；`GET /api/news` 返回当前热榜缓存快照。用量页页头常显当前时间与日期，每分钟只刷新页头，只有百分比、重置时间或状态变化时才重绘正文，每 5 分钟清屏整刷一次以控制墨水屏残影。
 
 ### 3. 查看、更新和停止
 
@@ -112,7 +112,7 @@ docker compose down         # 停止并移除容器
 - 触摸不会被看板拦截，仍可能触发 Kindle 原有界面。当前触摸设备路径针对上述 Paperwhite 3，其他型号需自行验证。设备重启后需要从 KUAL 再次启动看板。
 - 整分钟刷新以 Kindle 的系统时钟为准；画面中的时间来自服务端。两台设备的时钟应保持准确，时区配置也应符合使用地区。已检查的 Paperwhite 3 系统带网络校时功能；实际能否校时取决于网络及设备配置。
 
-服务端提供 `GET /screen.png`、`GET /api/display`、`GET /api/opencode/usage` 和 `GET /api/news`；访问根路径 `/` 返回 404 属正常情况。浏览器横屏预览地址为 `http://服务器IP:端口/screen.png?layout=landscape`，翻页参数为 `&page=home|opencode|calendar`。服务本身没有访问认证，请限制在可信网络内访问。
+服务端提供 `GET /screen.png`、`GET /api/display`、`GET /api/opencode/usage` 和 `GET /api/news`；访问根路径 `/` 返回 404 属正常情况。浏览器横屏预览地址为 `http://服务器IP:端口/screen.png?layout=landscape`，翻页参数为 `&page=home|calendar|opencode`。服务本身没有访问认证，请限制在可信网络内访问。
 
 ## Kindle 网络设置工具
 

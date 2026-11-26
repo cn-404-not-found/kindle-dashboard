@@ -11,16 +11,16 @@ import (
 
 func TestResolveDashboardPage(t *testing.T) {
 	home, ok := resolveDashboardPage("")
-	if !ok || home.Name != dashboardPageHome || home.Index != 1 || home.Total != 3 || home.Next != dashboardPageOpencode || home.Prev != dashboardPageCalendar {
+	if !ok || home.Name != dashboardPageHome || home.Index != 1 || home.Total != 3 || home.Next != dashboardPageCalendar || home.Prev != dashboardPageOpencode {
 		t.Fatalf("home = %+v ok=%v", home, ok)
 	}
-	opencode, ok := resolveDashboardPage(dashboardPageOpencode)
-	if !ok || opencode.Index != 2 || opencode.Total != 3 || opencode.Prev != dashboardPageHome || opencode.Next != dashboardPageCalendar {
-		t.Fatalf("opencode = %+v ok=%v", opencode, ok)
-	}
 	calendar, ok := resolveDashboardPage(dashboardPageCalendar)
-	if !ok || calendar.Index != 3 || calendar.Total != 3 || calendar.Prev != dashboardPageOpencode || calendar.Next != dashboardPageHome {
+	if !ok || calendar.Index != 2 || calendar.Total != 3 || calendar.Prev != dashboardPageHome || calendar.Next != dashboardPageOpencode {
 		t.Fatalf("calendar = %+v ok=%v", calendar, ok)
+	}
+	opencode, ok := resolveDashboardPage(dashboardPageOpencode)
+	if !ok || opencode.Index != 3 || opencode.Total != 3 || opencode.Prev != dashboardPageCalendar || opencode.Next != dashboardPageHome {
+		t.Fatalf("opencode = %+v ok=%v", opencode, ok)
 	}
 	if _, ok := resolveDashboardPage("missing"); ok {
 		t.Fatal("unknown page must be rejected")
