@@ -594,6 +594,135 @@ func TestTouchSwipeDetectsTapAndSwipe(t *testing.T) {
 	}
 }
 
+func TestLandscapePartialForceRecoversAfterConsecutiveFetchFailures(t *testing.T) {
+	root := t.TempDir()
+	bin := filepath.Join(root, "bin")
+	state := filepath.Join(root, "state")
+	if err := os.MkdirAll(bin, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(state, 0755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(path, value string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(value), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	nhSrc, err := os.ReadFile("kindle-client/dashboard-extension/network-health.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(filepath.Join(root, "network-health.sh"), string(nhSrc))
+	write(filepath.Join(root, "server-settings.sh"), "#!/bin/sh\necho http://example.test\n")
+	write(filepath.Join(root, "landscape-ui.sh"), "landscape_ui_start() { return 0; }\nlandscape_ui_cleanup() { exit 0; }\nlandscape_sleep() { sleep 0.05; }\n")
+	write(filepath.Join(bin, "sleep"), `#!/bin/sh
+case "$1" in
+  0.*) PATH=${PATH#*:} exec sleep "$1" ;;
+esac
+exit 0
+`)
+	write(filepath.Join(bin, "lipc-get-prop"), `#!/bin/sh
+case "$2" in
+  wirelessEnable) echo 1 ;;
+  *) exit 1 ;;
+esac
+`)
+	write(filepath.Join(bin, "lipc-set-prop"), `#!/bin/sh
+echo "$*" >> "$WIFI_CALLS"
+if [ "$2" = wirelessEnable ] && [ "$3" = 0 ]; then
+  : > "$TEST_STATE/recovered"
+fi
+`)
+	write(filepath.Join(bin, "wpa_cli"), `#!/bin/sh
+case "$*" in
+  *reassociate*|*reconnect*|*enable_network*)
+    echo "$*" >> "$WIFI_CALLS"
+    ;;
+  *)
+    echo 'wpa_state=COMPLETED'
+    ;;
+esac
+`)
+	write(filepath.Join(bin, "ifconfig"), "#!/bin/sh\necho 'inet addr:192.0.2.1'\n")
+	write(filepath.Join(bin, "eips"), `#!/bin/sh
+if [ "$1" = -i ]; then printf 'xres: 758\nyres: 1024\n'; else echo "$*" >> "$TEST_LOG"; fi
+`)
+	write(filepath.Join(bin, "curl"), `#!/bin/sh
+headers=; image=
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -D) headers=$2; shift 2 ;;
+    -o) image=$2; shift 2 ;;
+    -H|--max-time|--connect-timeout) shift 2 ;;
+    -fsS|-s|-S|-f) shift ;;
+    *) shift ;;
+  esac
+done
+[ -f "$TEST_STATE/recovered" ] || exit 22
+printf 'X-Dashboard-Layout: landscape-v1\r\nX-Dashboard-Partial-Version: 1\r\nX-Dashboard-Page: home\r\nX-Dashboard-Pages: 3\r\nX-Dashboard-Page-Index: 1\r\nX-Dashboard-Prev-Page: opencode\r\nX-Dashboard-Next-Page: calendar\r\nX-Dashboard-Date: 2026-11-27\r\nX-Dashboard-Hour: 2026112709\r\n' > "$headers"
+printf 'image' > "$image"
+`)
+
+	path, err := filepath.Abs("kindle-client/dashboard-extension/landscape-partial.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(root, "draws")
+	callsPath := filepath.Join(root, "wifi-calls")
+	cmd := exec.Command("sh", path)
+	cmd.Env = append(os.Environ(),
+		"PATH="+bin+":"+os.Getenv("PATH"),
+		"KINDLE_DASHBOARD_DIR="+root,
+		"KINDLE_PARTIAL_STATE="+state,
+		"KINDLE_PAGE_SWIPE=0",
+		"KINDLE_WIFI_RECOVER_SECONDS=2",
+		"TEST_STATE="+state,
+		"TEST_LOG="+logPath,
+		"WIFI_CALLS="+callsPath,
+	)
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = cmd.Process.Kill(); _, _ = cmd.Process.Wait() }()
+
+	deadline := time.Now().Add(8 * time.Second)
+	for time.Now().Before(deadline) {
+		data, _ := os.ReadFile(logPath)
+		if txt := strings.TrimSpace(string(data)); txt != "" && len(strings.Split(txt, "\n")) >= 2 {
+			break
+		}
+		time.Sleep(40 * time.Millisecond)
+	}
+	draws := strings.TrimSpace(string(mustReadFileOrEmpty(logPath)))
+	if len(strings.Split(draws, "\n")) < 2 || draws == "" {
+		t.Fatalf("client never recovered to draw after fake-online failures; draws=%q", draws)
+	}
+	calls := mustReadFile(t, callsPath)
+	for _, want := range []string{"reassociate", "com.lab126.cmd wirelessEnable 0"} {
+		if !strings.Contains(calls, want) {
+			t.Fatalf("missing %q in recovery calls:\n%s", want, calls)
+		}
+	}
+	events := mustReadFile(t, filepath.Join(root, "wifi-events.log"))
+	for _, want := range []string{
+		"Consecutive fetch failures (3); forcing Wi-Fi recovery.",
+		"Consecutive fetch failures (6); forcing Wi-Fi recovery.",
+		"Escalating to radio toggle (streak=6).",
+		"Forced Wi-Fi recovery completed.",
+	} {
+		if !strings.Contains(events, want) {
+			t.Fatalf("missing %q in wifi-events.log:\n%s", want, events)
+		}
+	}
+}
+
+func mustReadFileOrEmpty(path string) []byte {
+	b, _ := os.ReadFile(path)
+	return b
+}
+
 func mustReadFile(t *testing.T, path string) string {
 	t.Helper()
 	b, err := os.ReadFile(path)

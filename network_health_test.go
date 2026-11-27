@@ -126,3 +126,129 @@ func TestNetworkEnsureOnlineTogglesRadio(t *testing.T) {
 		}
 	}
 }
+
+func TestNetworkEnsureOnlineAppliesStaticIP(t *testing.T) {
+	s := newNetworkStubs(t, "1", "COMPLETED")
+	ifconfig := `#!/bin/sh
+if [ -f "$WIFI_STATE/ip_ready" ]; then echo 'inet addr:192.0.2.10'; fi
+`
+	if err := os.WriteFile(filepath.Join(s.dir, "ifconfig"), []byte(ifconfig), 0755); err != nil {
+		t.Fatal(err)
+	}
+	netDir := filepath.Join(s.dir, "net")
+	if err := os.MkdirAll(netDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(netDir, "mode"), []byte("static\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	autoScript := `#!/bin/sh
+echo "auto:$1" >> "$WIFI_CALLS"
+if [ "$1" = --tick ]; then
+  : > "$WIFI_STATE/ip_ready"
+fi
+`
+	if err := os.WriteFile(filepath.Join(netDir, "auto.sh"), []byte(autoScript), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := s.run(t, "network_ensure_online", "KINDLE_NET_CONFIG_DIR="+netDir)
+	if err != nil {
+		t.Fatalf("static IP recovery failed: %v (%s)", err, out)
+	}
+	calls := s.callLog(t)
+	for _, want := range []string{"auto:--ensure", "auto:--tick"} {
+		if !strings.Contains(calls, want) {
+			t.Fatalf("missing %q in recovery log: %q", want, calls)
+		}
+	}
+	if strings.Contains(calls, "wirelessEnable 0") {
+		t.Fatalf("radio toggled although auto.sh restored static IP: %q", calls)
+	}
+}
+
+func TestNetworkForceRecoverAndEventLog(t *testing.T) {
+	s := newNetworkStubs(t, "1", "COMPLETED")
+	netDir := filepath.Join(s.dir, "net")
+	if err := os.MkdirAll(netDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(netDir, "mode"), []byte("static\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	autoScript := `#!/bin/sh
+echo "auto:$1" >> "$WIFI_CALLS"
+`
+	if err := os.WriteFile(filepath.Join(netDir, "auto.sh"), []byte(autoScript), 0755); err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(s.dir, "logs", "wifi-events.log")
+
+	out, err := s.run(t, "network_force_recover 3",
+		"KINDLE_NET_CONFIG_DIR="+netDir,
+		"KINDLE_WIFI_EVENT_LOG="+logPath,
+	)
+	if err != nil {
+		t.Fatalf("soft force recover (streak=3) failed: %v (%s)", err, out)
+	}
+	calls := s.callLog(t)
+	for _, want := range []string{"auto:--tick", "enable 1", "ensureConnection wifi", "reassociate"} {
+		if !strings.Contains(calls, want) {
+			t.Fatalf("missing %q after force recover 3: %q", want, calls)
+		}
+	}
+	if strings.Contains(calls, "wirelessEnable 0") {
+		t.Fatalf("streak=3 should soft-recover without radio cycle when connected: %q", calls)
+	}
+
+	out, err = s.run(t, "network_force_recover 6",
+		"KINDLE_NET_CONFIG_DIR="+netDir,
+		"KINDLE_WIFI_EVENT_LOG="+logPath,
+	)
+	if err != nil {
+		t.Fatalf("hard force recover (streak=6) failed: %v (%s)", err, out)
+	}
+	calls = s.callLog(t)
+	for _, want := range []string{"wirelessEnable 0", "enable 0"} {
+		if !strings.Contains(calls, want) {
+			t.Fatalf("missing %q after force recover 6: %q", want, calls)
+		}
+	}
+
+	raw, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read event log: %v", err)
+	}
+	logText := string(raw)
+	for _, want := range []string{
+		"Consecutive fetch failures (3); forcing Wi-Fi recovery.",
+		"Escalating to radio toggle (streak=6).",
+		"Forced Wi-Fi recovery completed.",
+	} {
+		if !strings.Contains(logText, want) {
+			t.Fatalf("missing %q in wifi event log:\n%s", want, logText)
+		}
+	}
+
+	var seed strings.Builder
+	for i := 0; i < 225; i++ {
+		seed.WriteString("[2026-11-27 00:00:00] old line\n")
+	}
+	if err := os.WriteFile(logPath, []byte(seed.String()), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := s.run(t, "network_log 'trim check'", "KINDLE_WIFI_EVENT_LOG="+logPath); err != nil {
+		t.Fatalf("network_log failed: %v (%s)", err, out)
+	}
+	trimmed, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(trimmed)), "\n")
+	if len(lines) > 200 {
+		t.Fatalf("event log exceeded 200-line cap: got %d lines", len(lines))
+	}
+	if !strings.Contains(lines[len(lines)-1], "trim check") {
+		t.Fatalf("trimmed log lost latest event: %q", lines[len(lines)-1])
+	}
+}

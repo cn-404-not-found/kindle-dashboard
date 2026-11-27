@@ -2,6 +2,8 @@
 # PW2/PW3 landscape online mode: full paint on startup/day change, partial paints otherwise.
 DIR=${KINDLE_DASHBOARD_DIR:-/mnt/us/extensions/kindle-dashboard}
 KINDLE_DASHBOARD_DIR=$DIR
+KINDLE_WIFI_EVENT_LOG=${KINDLE_WIFI_EVENT_LOG:-$DIR/wifi-events.log}
+export KINDLE_WIFI_EVENT_LOG
 TMP_DIR=${KINDLE_PARTIAL_STATE:-/tmp/kindle-landscape-partial}
 mkdir -p "$TMP_DIR" || exit 1
 . "$DIR/landscape-ui.sh" || exit 1
@@ -24,6 +26,7 @@ article_timeout=${KINDLE_ARTICLE_TIMEOUT:-180}
 case "$article_timeout" in ''|*[!0-9]*) article_timeout=180 ;; esac
 next_refresh=0
 request_handled=0
+fetch_fail_streak=0
 page_request=$TMP_DIR/page-request
 rm -f "$page_request"
 swipe_pid=
@@ -78,9 +81,14 @@ fetch() {
     query="${query}&id=${article_id}&p=${article_page}"
   fi
   [ -n "$part" ] && query="$query&part=$part"
-  curl -fsS --connect-timeout 10 --max-time 45 -D "$TMP_DIR/headers" -o "$TMP_DIR/image.png" \
+  if curl -fsS --connect-timeout 10 --max-time 45 -D "$TMP_DIR/headers" -o "$TMP_DIR/image.png" \
     -H "png-width: $width" -H "png-height: $height" -H 'X-Dashboard-Layout: landscape-v1' \
-    "${url}/screen.png${query}" && [ -s "$TMP_DIR/image.png" ] && valid_metadata
+    "${url}/screen.png${query}" && [ -s "$TMP_DIR/image.png" ] && valid_metadata; then
+    fetch_fail_streak=0
+    return 0
+  fi
+  fetch_fail_streak=$((fetch_fail_streak + 1))
+  return 1
 }
 read_page_nav() {
   page_total=$(header X-Dashboard-Pages)
@@ -306,15 +314,21 @@ while :; do
         fi
       fi
     fi
+    if [ "${KINDLE_WIFI_WATCHDOG:-1}" != 0 ] && [ "$fetch_fail_streak" -ge 3 ] && [ $((fetch_fail_streak % 3)) -eq 0 ] && command -v network_force_recover >/dev/null 2>&1; then
+      network_force_recover "$fetch_fail_streak"
+    fi
   else
     echo 'Invalid server address.' >&2
   fi
   now=$(date +%s)
   if [ "$page" = news_detail ]; then
     remain=$((article_activity + article_timeout - now))
-    [ "$remain" -lt 1 ] && remain=1
-    delay=$remain
-    [ "$delay" -gt 30 ] && delay=30
+    if [ "$remain" -le 0 ]; then
+      delay=30
+    else
+      delay=$remain
+      [ "$delay" -gt 30 ] && delay=30
+    fi
   else
     delay=$((60 - now % 60))
     next_refresh=$((now + delay))
